@@ -223,7 +223,7 @@ mod tests {
     }
 
     #[test]
-    fn unknown_commands_are_usage_errors() {
-        assert!(Cli::try_parse_from(["mk61", "status"]).is_err());
+    fn unknown_command_is_a_usage_error() {
+        assert!(Cli::try_parse_from(["mk61", "bogus"]).is_err());
     }
 }

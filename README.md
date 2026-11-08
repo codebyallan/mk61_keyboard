@@ -23,6 +23,7 @@ original Windows driver or any other existing implementation.
 cargo build --workspace
 cargo test --workspace
 mk61 help
+mk61 list
 mk61 --version
 ```
 
