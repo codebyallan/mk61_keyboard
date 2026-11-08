@@ -6,9 +6,9 @@ use std::time::Duration;
 
 use crate::ServiceError;
 use mk61_core::{
-    BLOCK_CUSTOM_COUNT, BLOCK_MODE, CMD_READ_ACTIVE_PROFILE, CMD_READ_PROFILE_BLOCK,
-    CMD_WRITE_PROFILE_BLOCK, Effect, Profile, Report, Rgb, apply_effect, effect_color_slots,
-    write_color,
+    BLOCK_CUSTOM_COUNT, BLOCK_CUSTOM_CURRENT, BLOCK_MODE, CMD_READ_ACTIVE_PROFILE,
+    CMD_READ_PROFILE_BLOCK, CMD_WRITE_PROFILE_BLOCK, Effect, Profile, Report, Rgb, apply_effect,
+    effect_color_slots, write_color,
 };
 use mk61_device::{DEFAULT_SYSFS_ROOT, Transport};
 
@@ -304,6 +304,119 @@ impl<T: Transport> Service<T> {
         })
     }
 
+    /// Sets the brightness (0..=10) of the active profile.
+    pub fn apply_led_brightness(
+        &mut self,
+        clock: &dyn crate::Clock,
+        backup: &crate::BackupStore,
+        guard: &mut crate::FlashGuard,
+        value: u8,
+        save: bool,
+    ) -> Result<ApplyLedFieldResult, ServiceError> {
+        if value > 10 {
+            return Err(ServiceError::Core(mk61_core::Error::InvalidColorCount));
+        }
+        self.apply_led_field(clock, backup, guard, LedField::Brightness, value, save)
+    }
+
+    /// Sets the speed (2..=102, lower = faster) of the active profile.
+    pub fn apply_led_speed(
+        &mut self,
+        clock: &dyn crate::Clock,
+        backup: &crate::BackupStore,
+        guard: &mut crate::FlashGuard,
+        value: u8,
+        save: bool,
+    ) -> Result<ApplyLedFieldResult, ServiceError> {
+        if !(2..=102).contains(&value) {
+            return Err(ServiceError::Core(mk61_core::Error::InvalidColorCount));
+        }
+        self.apply_led_field(clock, backup, guard, LedField::Speed, value, save)
+    }
+
+    /// Sets the direction (0..=3) of the active profile.
+    pub fn apply_led_direction(
+        &mut self,
+        clock: &dyn crate::Clock,
+        backup: &crate::BackupStore,
+        guard: &mut crate::FlashGuard,
+        value: u8,
+        save: bool,
+    ) -> Result<ApplyLedFieldResult, ServiceError> {
+        if value > 3 {
+            return Err(ServiceError::Core(mk61_core::Error::InvalidColorCount));
+        }
+        self.apply_led_field(clock, backup, guard, LedField::Direction, value, save)
+    }
+
+    /// Generic field application: read, modify one byte, write, verify, optionally commit.
+    fn apply_led_field(
+        &mut self,
+        clock: &dyn crate::Clock,
+        backup: &crate::BackupStore,
+        guard: &mut crate::FlashGuard,
+        field: LedField,
+        value: u8,
+        save: bool,
+    ) -> Result<ApplyLedFieldResult, ServiceError> {
+        let profile = self.read_active_profile(clock)?;
+        let original_block = self.read_profile_block(clock, profile)?;
+
+        let mut block = original_block;
+        let offset = field.offset();
+        block[offset] = value;
+        if field != LedField::Brightness {
+            // keep commit flag clean
+        }
+        block[BLOCK_CUSTOM_COUNT] = 255;
+
+        self.write_profile_block_ram(clock, profile, &block)?;
+
+        let mut saved = false;
+        if save {
+            guard.check(clock.now())?;
+            backup.save("field", &original_block)?;
+            let mut commit_block = block;
+            commit_block[BLOCK_CUSTOM_COUNT] = 1;
+            self.write_profile_block_ram(clock, profile, &commit_block)?;
+            commit_block[BLOCK_CUSTOM_COUNT] = 255;
+            self.write_profile_block_ram(clock, profile, &commit_block)?;
+            guard.record(clock.now())?;
+            saved = true;
+        }
+
+        Ok(ApplyLedFieldResult {
+            profile,
+            field_name: field.name().to_string(),
+            value,
+            saved,
+        })
+    }
+
+    /// Commits the active profile to flash (standalone save).
+    pub fn save_profile(
+        &mut self,
+        clock: &dyn crate::Clock,
+        backup: &crate::BackupStore,
+        guard: &mut crate::FlashGuard,
+    ) -> Result<SaveProfileResult, ServiceError> {
+        guard.check(clock.now())?;
+        let profile = self.read_active_profile(clock)?;
+        let cur = self.read_profile_block(clock, profile)?;
+        // Arm: count 255 -> 1.
+        let mut arm = cur;
+        arm[BLOCK_CUSTOM_COUNT] = 1;
+        arm[BLOCK_CUSTOM_CURRENT] = 0;
+        self.write_profile_block_ram(clock, profile, &arm)?;
+        clock.sleep(std::time::Duration::from_millis(200));
+        // Clean: restores original (count 255).
+        let clean = cur;
+        self.write_profile_block_ram(clock, profile, &clean)?;
+        guard.record(clock.now())?;
+        backup.save("profile", &cur)?;
+        Ok(SaveProfileResult { profile })
+    }
+
     /// Clears a custom per-key layout: mode 15 -> 0, count -> 255.
     pub fn clear_custom_effect(
         &mut self,
@@ -330,6 +443,39 @@ pub struct ApplyLedEffectResult {
     pub saved: bool,
 }
 
+/// A profile field that can be changed in RAM.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LedField {
+    /// Brightness (0..=10).
+    Brightness,
+    /// Speed (2..=102, lower = faster).
+    Speed,
+    /// Direction (0..=3).
+    Direction,
+}
+
+impl LedField {
+    /// Absolute byte offset of the field within the profile report.
+    #[must_use]
+    pub const fn offset(self) -> usize {
+        match self {
+            LedField::Brightness => 12,
+            LedField::Speed => 19,
+            LedField::Direction => 13,
+        }
+    }
+
+    /// Human-readable field name.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            LedField::Brightness => "brightness",
+            LedField::Speed => "speed",
+            LedField::Direction => "direction",
+        }
+    }
+}
+
 /// Result of setting palette colours for an LED effect.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApplyLedColorResult {
@@ -341,6 +487,26 @@ pub struct ApplyLedColorResult {
     pub color_count: usize,
     /// Whether the change was committed to flash.
     pub saved: bool,
+}
+
+/// Result of changing a single LED field.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApplyLedFieldResult {
+    /// Profile the field was applied to.
+    pub profile: Profile,
+    /// Name of the changed field.
+    pub field_name: String,
+    /// Value written.
+    pub value: u8,
+    /// Whether the change was committed to flash.
+    pub saved: bool,
+}
+
+/// Result of committing the active profile to flash.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SaveProfileResult {
+    /// Profile that was committed.
+    pub profile: Profile,
 }
 
 /// Returns every LED effect the keyboard firmware supports.

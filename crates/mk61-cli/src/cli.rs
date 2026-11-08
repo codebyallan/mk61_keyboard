@@ -122,6 +122,64 @@ pub enum LedCommand {
     #[command(verbatim_doc_comment)]
     Effects,
 
+    /// Commit the active profile to flash.
+    ///
+    /// # Examples
+    ///
+    /// ```text
+    /// mk61 led save
+    /// ```
+    #[command(verbatim_doc_comment)]
+    Save,
+
+    /// Set the brightness (0..=10).
+    ///
+    /// # Examples
+    ///
+    /// ```text
+    /// mk61 led brightness 8 --save
+    /// ```
+    #[command(verbatim_doc_comment)]
+    Brightness {
+        /// Brightness value (0..=10).
+        value: u8,
+        /// Commit the change to flash after verification.
+        #[arg(long)]
+        save: bool,
+    },
+
+    /// Set the speed (2..=102, lower = faster).
+    ///
+    /// # Examples
+    ///
+    /// ```text
+    /// mk61 led speed 50 --save
+    /// ```
+    #[command(verbatim_doc_comment)]
+    Speed {
+        /// Speed value (2..=102).
+        value: u8,
+        /// Commit the change to flash after verification.
+        #[arg(long)]
+        save: bool,
+    },
+
+    /// Set the direction (0..=3).
+    ///
+    /// # Examples
+    ///
+    /// ```text
+    /// mk61 led direction 1 --save
+    /// ```
+    #[command(verbatim_doc_comment)]
+    Direction {
+        /// Direction value (0..=3).
+        value: u8,
+        /// Commit the change to flash after verification.
+        #[arg(long)]
+        save: bool,
+    },
+
     /// Set palette colours for a built-in effect.
     ///
     /// Applies the colours to the active profile in RAM. Pass `--save` to commit

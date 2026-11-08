@@ -26,6 +26,12 @@ Commands:
   led save           Commit the active profile to flash with verification
   led color <effect> <RRGGBB>... [--save]
                      Set palette colours for a built-in effect
+  led brightness <0..10> [--save]
+                     Set the LED brightness
+  led speed <2..102> [--save]
+                     Set the LED speed (lower = faster)
+  led direction <0..3> [--save]
+                     Set the LED animation direction
   led custom [--base RRGGBB] <keys>=<RRGGBB>...
                      Define a per-key layout (writes flash)
   led custom clear   Remove the stored layout (writes flash)
@@ -42,10 +48,9 @@ Exit status:
   1  runtime error
   2  usage error
 
-Current milestone: `help`, `list`, `status`, and `led effects` are implemented. `list`,
-`status` and `led effects` are read-only; hardware queries, LED writes and the
-remaining LED commands arrive in later milestones. Run `mk61 --help` for the
-generated CLI help.
+Current milestone: `help`, `list`, `status`, and `led` subcommands are implemented.
+`list` and `status` are read-only; LED commands talk to the keyboard. Run
+`mk61 --help` for the generated CLI help.
 ";
 
 /// Compact command list appended to the generated `--help` output.
@@ -65,7 +70,7 @@ Commands:
   led custom         Define or clear a per-key layout (writes flash)
   keys               List key names and matrix positions
 
-Implemented in this milestone: `help`, `list`, `status`, and `led effects`.";
+Implemented in this milestone: `help`, `list`, `status`, and `led` subcommands.";
 
 /// Writes the command overview to `writer`.
 ///

@@ -28,6 +28,10 @@ mk61 status
 mk61 led effects
 mk61 led effect <name|index> [--save]
 mk61 led color <effect> <RRGGBB>... [--save]
+mk61 led brightness <0..10> [--save]
+mk61 led speed <2..102> [--save]
+mk61 led direction <0..3> [--save]
+mk61 led save
 mk61 --version
 ```
 

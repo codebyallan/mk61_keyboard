@@ -126,7 +126,7 @@ fn help_subcommand_prints_the_overview_and_succeeds() {
             "overview is missing exit status {exit_status}"
         );
     }
-    assert!(text.contains("`help`, `list`, `status`, and `led effects` are implemented"));
+    assert!(text.contains("`help`, `list`, `status`, and `led` subcommands are implemented"));
 }
 
 #[test]
@@ -156,11 +156,9 @@ fn help_flag_prints_generated_help_and_succeeds() {
     assert!(text.contains("GLOBAL OPTIONS"));
     assert!(text.contains("led effects"));
     assert!(text.contains("Commands:"));
-    assert!(
-        text.contains(
-            "Implemented in this milestone: `help`, `list`, `status`, and `led effects`."
-        )
-    );
+    assert!(text.contains(
+        "Implemented in this milestone: `help`, `list`, `status`, and `led` subcommands."
+    ));
 }
 
 #[test]
@@ -498,11 +496,7 @@ fn led_effects_has_long_help() {
 
 #[test]
 fn planned_commands_are_still_usage_errors() {
-    for args in [
-        &["led", "save"][..],
-        &["led", "custom", "ESC=FF0000"][..],
-        &["keys"][..],
-    ] {
+    for args in [&["led", "custom", "ESC=FF0000"][..], &["keys"][..]] {
         let output = run(args);
 
         assert_eq!(

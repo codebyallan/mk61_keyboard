@@ -118,6 +118,99 @@ fn run(cli: Cli) -> Result<(), Box<dyn Error>> {
                     }
                 )?;
             }
+            LedCommand::Save => {
+                let device_path = resolve_device_path(&config)?;
+                let transport =
+                    HidrawTransport::open(&device_path).map_err(Box::<dyn Error>::from)?;
+                let mut service = mk61_service::Service::new(config.clone(), transport);
+                let backup = mk61_service::BackupStore::from_config(&config);
+                let mut guard = mk61_service::FlashGuard::from_config(&config);
+                let result =
+                    service.save_profile(&mk61_service::SystemClock, &backup, &mut guard)?;
+                writeln!(
+                    io::stdout().lock(),
+                    "saved profile {} to flash",
+                    result.profile
+                )?;
+            }
+            LedCommand::Brightness { value, save } => {
+                let device_path = resolve_device_path(&config)?;
+                let transport =
+                    HidrawTransport::open(&device_path).map_err(Box::<dyn Error>::from)?;
+                let mut service = mk61_service::Service::new(config.clone(), transport);
+                let backup = mk61_service::BackupStore::from_config(&config);
+                let mut guard = mk61_service::FlashGuard::from_config(&config);
+                let result = service.apply_led_brightness(
+                    &mk61_service::SystemClock,
+                    &backup,
+                    &mut guard,
+                    value,
+                    save,
+                )?;
+                writeln!(
+                    io::stdout().lock(),
+                    "set brightness to {} on profile {}{}",
+                    result.value,
+                    result.profile,
+                    if result.saved {
+                        " (saved to flash)"
+                    } else {
+                        ""
+                    }
+                )?;
+            }
+            LedCommand::Speed { value, save } => {
+                let device_path = resolve_device_path(&config)?;
+                let transport =
+                    HidrawTransport::open(&device_path).map_err(Box::<dyn Error>::from)?;
+                let mut service = mk61_service::Service::new(config.clone(), transport);
+                let backup = mk61_service::BackupStore::from_config(&config);
+                let mut guard = mk61_service::FlashGuard::from_config(&config);
+                let result = service.apply_led_speed(
+                    &mk61_service::SystemClock,
+                    &backup,
+                    &mut guard,
+                    value,
+                    save,
+                )?;
+                writeln!(
+                    io::stdout().lock(),
+                    "set speed to {} on profile {}{}",
+                    result.value,
+                    result.profile,
+                    if result.saved {
+                        " (saved to flash)"
+                    } else {
+                        ""
+                    }
+                )?;
+            }
+            LedCommand::Direction { value, save } => {
+                let device_path = resolve_device_path(&config)?;
+                let transport =
+                    HidrawTransport::open(&device_path).map_err(Box::<dyn Error>::from)?;
+                let mut service = mk61_service::Service::new(config.clone(), transport);
+                let backup = mk61_service::BackupStore::from_config(&config);
+                let mut guard = mk61_service::FlashGuard::from_config(&config);
+                let result = service.apply_led_direction(
+                    &mk61_service::SystemClock,
+                    &backup,
+                    &mut guard,
+                    value,
+                    save,
+                )?;
+                writeln!(
+                    io::stdout().lock(),
+                    "set direction to {} on profile {}{}",
+                    result.value,
+                    result.profile,
+                    if result.saved {
+                        " (saved to flash)"
+                    } else {
+                        ""
+                    }
+                )?;
+            }
         },
     }
 
