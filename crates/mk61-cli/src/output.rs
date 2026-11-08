@@ -2,7 +2,7 @@
 
 use std::io::{self, Write};
 
-use mk61_service::DeviceInfo;
+use mk61_service::{DeviceInfo, StatusReport};
 
 /// Command overview printed by `mk61 help`.
 pub const OVERVIEW: &str = "\
@@ -42,9 +42,10 @@ Exit status:
   1  runtime error
   2  usage error
 
-Current milestone: `help` and `list` are implemented. `list` is read-only and
-never opens a device node; hardware-changing commands arrive in later
-milestones. Run `mk61 --help` for the generated CLI help.
+Current milestone: `help`, `list`, and `status` are implemented. `list` and
+`status` are read-only and never open a device node; hardware queries and LED
+commands arrive in later milestones. Run `mk61 --help` for the generated CLI
+help.
 ";
 
 /// Compact command list appended to the generated `--help` output.
@@ -64,7 +65,7 @@ Commands:
   led custom         Define or clear a per-key layout (writes flash)
   keys               List key names and matrix positions
 
-Implemented in this milestone: `help` and `list`.";
+Implemented in this milestone: `help`, `list`, and `status`.";
 
 /// Writes the command overview to `writer`.
 ///
@@ -116,11 +117,76 @@ pub fn print_devices(writer: &mut impl Write, devices: &[DeviceInfo]) -> io::Res
     writer.flush()
 }
 
+/// Writes the current status to `writer`.
+///
+/// The report comes from the service layer and only carries read-only
+/// information: whether a daemon is supervising, which devices were found, and
+/// which capability switches the host granted. Hardware state such as the
+/// active profile or the selected effect is filled in by later milestones.
+///
+/// # Errors
+///
+/// Returns any I/O error produced while writing or flushing the stream.
+pub fn print_status(writer: &mut impl Write, report: &StatusReport) -> io::Result<()> {
+    writeln!(
+        writer,
+        "daemon:            {}",
+        if report.daemon_running {
+            "running"
+        } else {
+            "not running (standalone)"
+        }
+    )?;
+    writeln!(writer, "devices found:   {}", report.device_count())?;
+    for device in &report.devices {
+        writeln!(
+            writer,
+            "  {}   {:04X}:{:04X}   {}",
+            device.path.display(),
+            device.vendor_id,
+            device.product_id,
+            if device.is_config_interface {
+                "config: yes"
+            } else {
+                "config: no"
+            }
+        )?;
+        writeln!(
+            writer,
+            "  {}",
+            device.product.as_deref().unwrap_or("(unknown)")
+        )?;
+    }
+
+    writeln!(writer, "capabilities:")?;
+    writeln!(
+        writer,
+        "  led control:        {}",
+        if report.capabilities.led_control {
+            "on"
+        } else {
+            "off"
+        }
+    )?;
+    writeln!(
+        writer,
+        "  profile writes:     {}",
+        if report.capabilities.profile_writes {
+            "on"
+        } else {
+            "off"
+        }
+    )?;
+
+    writer.flush()
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
 
     use super::*;
+    use mk61_service::CapabilityStatus;
 
     const PLANNED_COMMANDS: [&str; 8] = [
         "list",
@@ -232,5 +298,48 @@ mod tests {
         print_devices(&mut buffer, &[info]).unwrap();
 
         assert!(String::from_utf8(buffer).unwrap().contains("(unknown)"));
+    }
+
+    fn status_report(devices: &[DeviceInfo], capabilities: CapabilityStatus) -> StatusReport {
+        StatusReport {
+            daemon_running: false,
+            devices: devices.to_vec(),
+            capabilities,
+        }
+    }
+
+    #[test]
+    fn status_prints_daemon_devices_and_capabilities() {
+        let report = status_report(
+            &[device("/dev/hidraw1", false), device("/dev/hidraw2", true)],
+            CapabilityStatus {
+                led_control: true,
+                profile_writes: false,
+            },
+        );
+        let mut buffer = Vec::new();
+
+        print_status(&mut buffer, &report).unwrap();
+
+        let text = String::from_utf8(buffer).unwrap();
+        assert!(text.contains("daemon:            not running (standalone)"));
+        assert!(text.contains("devices found:   2"));
+        assert!(text.contains("/dev/hidraw1"));
+        assert!(text.contains("/dev/hidraw2"));
+        assert!(text.contains("capabilities:"));
+        assert!(text.contains("led control:        on"));
+        assert!(text.contains("profile writes:     off"));
+    }
+
+    #[test]
+    fn status_prints_an_empty_system() {
+        let report = status_report(&[], CapabilityStatus::default());
+        let mut buffer = Vec::new();
+
+        print_status(&mut buffer, &report).unwrap();
+
+        let text = String::from_utf8(buffer).unwrap();
+        assert!(text.contains("devices found:   0"));
+        assert!(text.contains("led control:        off"));
     }
 }

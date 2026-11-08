@@ -85,6 +85,21 @@ pub enum Command {
     /// ```
     #[command(verbatim_doc_comment)]
     List,
+
+    /// Show device and capability status.
+    ///
+    /// Reports whether a daemon is supervising the keyboard, which keyboards
+    /// were detected, and which capability switches the host granted. This
+    /// command is read-only and never opens a device node.
+    ///
+    /// # Examples
+    ///
+    /// ```text
+    /// mk61 status
+    /// mk61 --device /dev/hidraw3 status
+    /// ```
+    #[command(verbatim_doc_comment)]
+    Status,
 }
 
 impl Cli {
@@ -92,6 +107,8 @@ impl Cli {
     ///
     /// Explicit `--device` and `--state-dir` values override the defaults;
     /// safety settings such as the flash cooldown keep their standard values.
+    /// The sysfs root is resolved from the hidden `MK61_SYSFS_ROOT` override and
+    /// falls back to `/sys` only when it is unset or empty.
     pub fn service_config(&self) -> ServiceConfig {
         let mut config = ServiceConfig::default();
         if let Some(device) = &self.device {
@@ -100,7 +117,19 @@ impl Cli {
         if let Some(state_dir) = &self.state_dir {
             config.state_dir = state_dir.clone();
         }
+        if let Ok(sysfs_root) = self.resolve_sysfs_root() {
+            config.sysfs_root = sysfs_root;
+        }
         config
+    }
+
+    /// Resolves the sysfs root used by device discovery.
+    ///
+    /// Returns the value of the hidden [`SYSFS_ROOT_ENV`] variable or the
+    /// system default. Relative values are rejected so a misconfigured test or
+    /// deployment cannot silently scan an unexpected tree.
+    pub fn resolve_sysfs_root(&self) -> io::Result<PathBuf> {
+        sysfs_root_from_env()
     }
 }
 
@@ -163,6 +192,12 @@ mod tests {
     }
 
     #[test]
+    fn parses_the_status_command() {
+        let cli = Cli::try_parse_from(["mk61", "status"]).unwrap();
+        assert!(matches!(cli.command, Command::Status));
+    }
+
+    #[test]
     fn global_options_override_the_service_defaults() {
         let cli = Cli::try_parse_from([
             "mk61",
@@ -190,6 +225,7 @@ mod tests {
         let config = cli.service_config();
 
         assert!(config.device_path.is_none());
+        assert_eq!(config.sysfs_root, PathBuf::from(DEFAULT_SYSFS_ROOT));
         assert_eq!(config.flash_cooldown, mk61_service::DEFAULT_FLASH_COOLDOWN);
         assert_eq!(config.read_retries, mk61_service::DEFAULT_READ_RETRIES);
     }

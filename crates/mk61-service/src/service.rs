@@ -4,7 +4,7 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use mk61_device::Transport;
+use mk61_device::{DEFAULT_SYSFS_ROOT, Transport};
 
 /// Minimum time between two flash commits.
 pub const DEFAULT_FLASH_COOLDOWN: Duration = Duration::from_secs(30);
@@ -17,6 +17,8 @@ pub const DEFAULT_READ_RETRIES: u32 = 3;
 pub struct ServiceConfig {
     /// Explicit hidraw path, or `None` to auto-detect a device.
     pub device_path: Option<PathBuf>,
+    /// Linux sysfs mount used by device discovery.
+    pub sysfs_root: PathBuf,
     /// Directory holding backups and the flash guard state.
     pub state_dir: PathBuf,
     /// Minimum time between two successful flash commits.
@@ -29,6 +31,7 @@ impl Default for ServiceConfig {
     fn default() -> Self {
         Self {
             device_path: None,
+            sysfs_root: PathBuf::from(DEFAULT_SYSFS_ROOT),
             state_dir: default_state_dir(),
             flash_cooldown: DEFAULT_FLASH_COOLDOWN,
             read_retries: DEFAULT_READ_RETRIES,

@@ -14,9 +14,9 @@ use std::io;
 use std::process::ExitCode;
 
 use clap::Parser;
-use mk61_service::DeviceCatalog;
+use mk61_service::{DeviceCatalog, collect_status};
 
-use crate::cli::{Cli, Command, sysfs_root_from_env};
+use crate::cli::{Cli, Command};
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
@@ -32,20 +32,23 @@ fn main() -> ExitCode {
 fn run(cli: Cli) -> Result<(), Box<dyn Error>> {
     // Resolve global options now so defaults and path handling are exercised.
     // Later milestones pass this configuration to device use-cases.
-    let _config = cli.service_config();
-    let Cli {
-        device, command, ..
-    } = cli;
+    let config = cli.service_config();
+    let sysfs_root = cli.resolve_sysfs_root()?;
+    let Cli { command, .. } = cli;
 
     match command {
         Command::Help => output::print_overview(&mut io::stdout().lock())?,
         Command::List => {
-            let catalog = DeviceCatalog::new(sysfs_root_from_env()?);
-            let devices = match device {
-                Some(path) => vec![catalog.inspect(&path)?],
+            let catalog = DeviceCatalog::new(&sysfs_root);
+            let devices = match &config.device_path {
+                Some(path) => vec![catalog.inspect(path)?],
                 None => catalog.list()?,
             };
             output::print_devices(&mut io::stdout().lock(), &devices)?;
+        }
+        Command::Status => {
+            let report = collect_status(&config)?;
+            output::print_status(&mut io::stdout().lock(), &report)?;
         }
     }
 

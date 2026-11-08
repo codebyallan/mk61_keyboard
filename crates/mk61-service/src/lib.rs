@@ -17,6 +17,7 @@ pub mod clock;
 mod error;
 pub mod guard;
 pub mod service;
+pub mod status;
 
 pub use backup::BackupStore;
 pub use catalog::DeviceCatalog;
@@ -26,4 +27,8 @@ pub use guard::FlashGuard;
 pub use mk61_device::{DEFAULT_SYSFS_ROOT, DeviceInfo, PRODUCT_ID, VENDOR_ID, sanitize_usb_string};
 pub use service::{
     DEFAULT_FLASH_COOLDOWN, DEFAULT_READ_RETRIES, Service, ServiceConfig, default_state_dir,
+};
+pub use status::{
+    CapabilityStatus, LED_CONTROL_ENV, PROFILE_WRITE_ENV, StatusReport, capabilities_from_env,
+    capabilities_from_flags, collect_status,
 };

@@ -126,7 +126,7 @@ fn help_subcommand_prints_the_overview_and_succeeds() {
             "overview is missing exit status {exit_status}"
         );
     }
-    assert!(text.contains("`help` and `list` are implemented"));
+    assert!(text.contains("`help`, `list`, and `status` are implemented"));
 }
 
 #[test]
@@ -156,7 +156,7 @@ fn help_flag_prints_generated_help_and_succeeds() {
     assert!(text.contains("GLOBAL OPTIONS"));
     assert!(text.contains("led effects"));
     assert!(text.contains("Commands:"));
-    assert!(text.contains("Implemented in this milestone: `help` and `list`."));
+    assert!(text.contains("Implemented in this milestone: `help`, `list`, and `status`."));
 }
 
 #[test]
@@ -428,9 +428,51 @@ fn relative_sysfs_override_is_a_runtime_error() {
 }
 
 #[test]
+fn status_prints_the_device_and_capability_report() {
+    let sysfs = FakeSysfs::new("status-empty");
+
+    let output = run_with_env(&["status"], &[("MK61_SYSFS_ROOT", sysfs.root_string())]);
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty());
+
+    let text = stdout(&output);
+    assert!(text.contains("devices found"));
+    assert!(text.contains("capabilities:"));
+    assert!(text.contains("daemon:"));
+}
+
+#[test]
+fn status_accepts_one_explicit_device() {
+    let sysfs = FakeSysfs::new("status-explicit");
+    sysfs.add("null", MK61_UEVENT, Some(CONFIG_DESCRIPTOR));
+
+    let output = run_with_env(
+        &["--device", "/dev/null", "status"],
+        &[("MK61_SYSFS_ROOT", sysfs.root_string())],
+    );
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty());
+    assert!(stdout(&output).contains("1EA7:9018"));
+}
+
+#[test]
+fn status_rejects_a_missing_device() {
+    let sysfs = FakeSysfs::new("status-missing");
+
+    let output = run_with_env(
+        &["--device", "/dev/mk61-does-not-exist", "status"],
+        &[("MK61_SYSFS_ROOT", sysfs.root_string())],
+    );
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty());
+}
+
+#[test]
 fn planned_commands_are_still_usage_errors() {
     for args in [
-        &["status"][..],
         &["led", "effects"][..],
         &["led", "effect", "wave"][..],
         &["led", "save"][..],

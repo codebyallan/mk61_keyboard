@@ -24,6 +24,7 @@ cargo build --workspace
 cargo test --workspace
 mk61 help
 mk61 list
+mk61 status
 mk61 --version
 ```
 
