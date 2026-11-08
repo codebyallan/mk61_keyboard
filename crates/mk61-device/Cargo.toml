@@ -8,6 +8,7 @@ description = "Linux device discovery and feature-report transport for the MK61 
 
 [dependencies]
 thiserror.workspace = true
+rustix.workspace = true
 
 [lints]
 workspace = true

@@ -12,6 +12,7 @@ description = "Pure-Rust Linux controller for the Gamakay MK61 / SK61L keyboard"
 [workspace.dependencies]
 clap = { version = "4.5", features = ["derive"] }
 thiserror = "2"
+rustix = { version = "1.1", features = ["std"] }
 
 mk61-core = { path = "crates/mk61-core" }
 mk61-device = { path = "crates/mk61-device" }

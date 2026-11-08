@@ -32,7 +32,7 @@ pub use discovery::{
 pub use error::DeviceError;
 pub use mock::MockTransport;
 pub use sanitize::{MAX_USB_STRING_CHARS, sanitize_usb_string};
-pub use transport::Transport;
+pub use transport::{FEATURE_REPORT_ID, FEATURE_REPORT_SIZE, HidrawTransport, Transport};
 
 /// Default Linux sysfs mount point used for discovery.
 pub const DEFAULT_SYSFS_ROOT: &str = "/sys";
