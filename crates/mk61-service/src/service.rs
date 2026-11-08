@@ -662,13 +662,13 @@ mod tests {
     fn led_effects_contains_the_builtins_and_the_custom_effect() {
         let effects = led_effects();
 
-        assert_eq!(effects.len(), 14);
+        assert_eq!(effects.len(), 16);
         assert_eq!(effects[0].index, 0);
         assert_eq!(effects[0].name, "wave");
         assert_eq!(effects[12].index, 12);
         assert_eq!(effects[12].name, "lighting");
-        assert_eq!(effects[13].index, 15);
-        assert_eq!(effects[13].name, "custom");
+        assert_eq!(effects[15].index, 15);
+        assert_eq!(effects[15].name, "custom");
     }
 
     #[test]

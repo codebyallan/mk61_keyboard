@@ -6,7 +6,7 @@ use crate::Error;
 pub const CUSTOM_EFFECT_ID: u8 = 15;
 
 /// Number of built-in effects supported by the keyboard (indices `0..=12`).
-pub const EFFECT_COUNT: usize = 13;
+pub const EFFECT_COUNT: usize = 15;
 
 /// Number of colour slots used by the `wave` effect.
 pub const WAVE_COLOR_COUNT: usize = 14;
@@ -154,6 +154,23 @@ pub const EFFECTS: [Effect; EFFECT_COUNT] = [
             count: 1,
         }),
     },
+    // Index 13: White color effect (single colour white, observed on hardware)
+    Effect {
+        index: 13,
+        name: "white",
+        description: "single colour white",
+        colors: Some(ColorSlots {
+            offset: 89,
+            count: 1,
+        }),
+    },
+    // Index 14: All LEDs off (observed on hardware)
+    Effect {
+        index: 14,
+        name: "off",
+        description: "all LEDs off",
+        colors: None,
+    },
 ];
 
 /// Returns the built-in effect registered at `index`.
@@ -264,8 +281,9 @@ mod tests {
     fn resolves_built_in_effects_by_index_and_name() {
         assert_eq!(effect_by_index(0).unwrap().name, "wave");
         assert_eq!(effect_by_index(12).unwrap().name, "lighting");
-        assert_eq!(effect_by_index(13), None);
+        assert_eq!(effect_by_index(13).unwrap().name, "white");
         assert_eq!(effect_by_index(255), None);
+        assert_eq!(effect_by_index(14).unwrap().name, "off");
         assert_eq!(effect_by_index(15), None);
 
         assert_eq!(effect_by_name("wave").unwrap().index, 0);
