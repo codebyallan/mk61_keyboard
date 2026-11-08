@@ -48,7 +48,7 @@ pub const EFFECTS: [Effect; EFFECT_COUNT] = [
         name: "wave",
         description: "wave across the matrix",
         colors: Some(ColorSlots {
-            offset: 84,
+            offset: 92,
             count: WAVE_COLOR_COUNT,
         }),
     },
@@ -57,7 +57,7 @@ pub const EFFECTS: [Effect; EFFECT_COUNT] = [
         name: "breath",
         description: "smooth colour pulse",
         colors: Some(ColorSlots {
-            offset: 33,
+            offset: 41,
             count: 2,
         }),
     },
@@ -72,7 +72,7 @@ pub const EFFECTS: [Effect; EFFECT_COUNT] = [
         name: "starlight",
         description: "single colour starlight",
         colors: Some(ColorSlots {
-            offset: 39,
+            offset: 47,
             count: 1,
         }),
     },
@@ -81,7 +81,7 @@ pub const EFFECTS: [Effect; EFFECT_COUNT] = [
         name: "encounter",
         description: "encounter colour pair",
         colors: Some(ColorSlots {
-            offset: 42,
+            offset: 50,
             count: 2,
         }),
     },
@@ -90,7 +90,7 @@ pub const EFFECTS: [Effect; EFFECT_COUNT] = [
         name: "rain",
         description: "rain drop animation",
         colors: Some(ColorSlots {
-            offset: 48,
+            offset: 56,
             count: 1,
         }),
     },
@@ -99,7 +99,7 @@ pub const EFFECTS: [Effect; EFFECT_COUNT] = [
         name: "pulse",
         description: "pulse animation",
         colors: Some(ColorSlots {
-            offset: 51,
+            offset: 59,
             count: 2,
         }),
     },
@@ -108,7 +108,7 @@ pub const EFFECTS: [Effect; EFFECT_COUNT] = [
         name: "cross",
         description: "cross fade",
         colors: Some(ColorSlots {
-            offset: 57,
+            offset: 65,
             count: 2,
         }),
     },
@@ -117,7 +117,7 @@ pub const EFFECTS: [Effect; EFFECT_COUNT] = [
         name: "trigger",
         description: "trigger flash",
         colors: Some(ColorSlots {
-            offset: 63,
+            offset: 71,
             count: 2,
         }),
     },
@@ -126,7 +126,7 @@ pub const EFFECTS: [Effect; EFFECT_COUNT] = [
         name: "ripple",
         description: "ripple propagation",
         colors: Some(ColorSlots {
-            offset: 69,
+            offset: 77,
             count: 2,
         }),
     },
@@ -135,7 +135,7 @@ pub const EFFECTS: [Effect; EFFECT_COUNT] = [
         name: "blossom",
         description: "blossom animation",
         colors: Some(ColorSlots {
-            offset: 75,
+            offset: 83,
             count: 2,
         }),
     },
@@ -150,7 +150,7 @@ pub const EFFECTS: [Effect; EFFECT_COUNT] = [
         name: "lighting",
         description: "constant single colour",
         colors: Some(ColorSlots {
-            offset: 81,
+            offset: 89,
             count: 1,
         }),
     },
@@ -294,7 +294,7 @@ mod tests {
         assert_eq!(
             effect_color_slots(&EFFECTS[0]).unwrap(),
             ColorSlots {
-                offset: 84,
+                offset: 92,
                 count: WAVE_COLOR_COUNT
             }
         );

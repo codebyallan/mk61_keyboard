@@ -26,7 +26,7 @@ pub const CMD_READ_ACTIVE_PROFILE: u8 = 0x81;
 /// Read a profile block.
 pub const CMD_READ_PROFILE_BLOCK: u8 = 0x82;
 /// Write a profile block (RAM, or flash when committed).
-pub const CMD_WRITE_PROFILE_BLOCK: u8 = 0x83;
+pub const CMD_WRITE_PROFILE_BLOCK: u8 = 0x02;
 /// Read/write custom effect colour data.
 pub const CMD_CUSTOM_COLORS: u8 = 0x08;
 /// Read/write custom effect frame data.
@@ -34,25 +34,25 @@ pub const CMD_CUSTOM_FRAME: u8 = 0x09;
 /// Read/write custom effect metadata.
 pub const CMD_CUSTOM_EFFECT: u8 = 0x0A;
 
-// Profile block offsets (relative to the 256-byte payload).
+// Profile block offsets (absolute within the 264-byte report).
 /// LED effect mode byte.
-pub const BLOCK_MODE: usize = 3;
+pub const BLOCK_MODE: usize = 11;
 /// Brightness byte.
-pub const BLOCK_BRIGHTNESS: usize = 4;
+pub const BLOCK_BRIGHTNESS: usize = 12;
 /// Direction byte.
-pub const BLOCK_DIRECTION: usize = 5;
+pub const BLOCK_DIRECTION: usize = 13;
 /// Speed byte.
-pub const BLOCK_SPEED: usize = 11;
+pub const BLOCK_SPEED: usize = 19;
 /// First spectrum flag byte.
-pub const BLOCK_SPECTRUM_START: usize = 24;
+pub const BLOCK_SPECTRUM_START: usize = 32;
 /// Last spectrum flag byte (inclusive).
-pub const BLOCK_SPECTRUM_END: usize = 32;
+pub const BLOCK_SPECTRUM_END: usize = 40;
 /// Custom layout colour count.
-pub const BLOCK_CUSTOM_COUNT: usize = 126;
+pub const BLOCK_CUSTOM_COUNT: usize = 134;
 /// Custom layout current index.
-pub const BLOCK_CUSTOM_CURRENT: usize = 127;
+pub const BLOCK_CUSTOM_CURRENT: usize = 135;
 /// Base offset of the planar colour table.
-pub const BLOCK_COLOR_BASE: usize = 84;
+pub const BLOCK_COLOR_BASE: usize = 92;
 
 /// A 264-byte feature report.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -133,8 +133,13 @@ pub fn parse_active_profile(report: &Report) -> crate::Result<crate::Profile> {
 /// Sets the mode byte to `effect.index`. Effects without colour slots leave
 /// the existing colour table untouched. When switching away from the custom
 /// effect, the custom count byte is reset to `255` (clean).
-pub fn apply_effect(block: &mut [u8; PAYLOAD_SIZE], effect: &crate::Effect, previous_mode: u8) {
+pub fn apply_effect(block: &mut [u8; REPORT_SIZE], effect: &crate::Effect, previous_mode: u8) {
     if previous_mode == crate::CUSTOM_EFFECT_ID && effect.index != crate::CUSTOM_EFFECT_ID {
+        block[BLOCK_CUSTOM_COUNT] = 255;
+    }
+    // A non-custom effect must leave the commit flag clean; an armed (count=1)
+    // profile makes the firmware ignore mode changes.
+    if effect.index != crate::CUSTOM_EFFECT_ID {
         block[BLOCK_CUSTOM_COUNT] = 255;
     }
     block[BLOCK_MODE] = effect.index;
@@ -146,7 +151,7 @@ pub fn apply_effect(block: &mut [u8; PAYLOAD_SIZE], effect: &crate::Effect, prev
 /// that table. Returns [`Error::InvalidColorCount`] when `index` is out of
 /// range.
 pub fn write_color(
-    block: &mut [u8; PAYLOAD_SIZE],
+    block: &mut [u8; REPORT_SIZE],
     slots: crate::ColorSlots,
     index: usize,
     color: crate::Rgb,
@@ -165,7 +170,7 @@ pub fn write_color(
 /// Reads a colour from the planar R/G/B table of a profile block.
 #[must_use]
 pub fn read_color(
-    block: &[u8; PAYLOAD_SIZE],
+    block: &[u8; REPORT_SIZE],
     slots: crate::ColorSlots,
     index: usize,
 ) -> Option<crate::Rgb> {
@@ -217,7 +222,7 @@ mod tests {
 
     #[test]
     fn apply_effect_sets_mode_byte() {
-        let mut block = [0_u8; PAYLOAD_SIZE];
+        let mut block = [0_u8; REPORT_SIZE];
         let effect = effect_by_index(5).unwrap();
         apply_effect(&mut block, effect, 0);
         assert_eq!(block[BLOCK_MODE], 5);
@@ -225,7 +230,7 @@ mod tests {
 
     #[test]
     fn apply_effect_resets_custom_count_when_leaving_custom() {
-        let mut block = [0_u8; PAYLOAD_SIZE];
+        let mut block = [0_u8; REPORT_SIZE];
         block[BLOCK_CUSTOM_COUNT] = 7;
         block[BLOCK_MODE] = 15;
         let effect = effect_by_index(0).unwrap();
@@ -236,13 +241,13 @@ mod tests {
 
     #[test]
     fn write_and_read_color_round_trip() {
-        let mut block = [0_u8; PAYLOAD_SIZE];
+        let mut block = [0_u8; REPORT_SIZE];
         let slots = effect_color_slots(&Effect {
             index: 0,
             name: "wave",
             description: "",
             colors: Some(crate::ColorSlots {
-                offset: 84,
+                offset: 92,
                 count: 14,
             }),
         })

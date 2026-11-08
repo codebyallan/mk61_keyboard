@@ -7,7 +7,7 @@ use std::time::Duration;
 use crate::ServiceError;
 use mk61_core::{
     BLOCK_CUSTOM_COUNT, BLOCK_MODE, CMD_READ_ACTIVE_PROFILE, CMD_READ_PROFILE_BLOCK,
-    CMD_WRITE_PROFILE_BLOCK, Effect, PAYLOAD_SIZE, Profile, Report, apply_effect,
+    CMD_WRITE_PROFILE_BLOCK, Effect, Profile, Report, apply_effect,
 };
 use mk61_device::{DEFAULT_SYSFS_ROOT, Transport};
 
@@ -105,11 +105,32 @@ impl<T: Transport> Service<T> {
     }
 
     /// Reads the active profile number from the device.
-    pub fn read_active_profile(&mut self) -> Result<Profile, ServiceError> {
+    pub fn read_active_profile(
+        &mut self,
+        clock: &dyn crate::Clock,
+    ) -> Result<Profile, ServiceError> {
         let mut report = Report::new(CMD_READ_ACTIVE_PROFILE, 0);
         self.transport.write_feature(report.as_bytes())?;
+        clock.sleep(std::time::Duration::from_millis(100));
         let mut buffer = [0_u8; mk61_core::REPORT_SIZE];
-        self.transport.read_feature(&mut buffer)?;
+        let transferred = self.transport.read_feature(&mut buffer)?;
+        // The device prepends a zero byte to some responses ("shifted" report).
+        if buffer[0] == 0 && buffer[1] == mk61_core::REPORT_ID {
+            for i in 0..(mk61_core::REPORT_SIZE - 1) {
+                buffer[i] = buffer[i + 1];
+            }
+            buffer[mk61_core::REPORT_SIZE - 1] = 0;
+        }
+        if transferred != mk61_core::REPORT_SIZE
+            || buffer[0] != mk61_core::REPORT_ID
+            || buffer[1] != CMD_READ_ACTIVE_PROFILE
+            || buffer[2] < 1
+            || buffer[2] > 4
+        {
+            return Err(ServiceError::Device(
+                mk61_device::DeviceError::MalformedReport("active profile response mismatch"),
+            ));
+        }
         report = Report::from_bytes(buffer);
         Ok(Profile::new(report.param0())?)
     }
@@ -117,32 +138,71 @@ impl<T: Transport> Service<T> {
     /// Reads a 256-byte profile block from the device.
     pub fn read_profile_block(
         &mut self,
+        clock: &dyn crate::Clock,
         profile: Profile,
-    ) -> Result<[u8; PAYLOAD_SIZE], ServiceError> {
+    ) -> Result<[u8; mk61_core::REPORT_SIZE], ServiceError> {
         let mut report = Report::new(CMD_READ_PROFILE_BLOCK, profile.get());
         self.transport.write_feature(report.as_bytes())?;
+        clock.sleep(std::time::Duration::from_millis(50));
         let mut buffer = [0_u8; mk61_core::REPORT_SIZE];
-        self.transport.read_feature(&mut buffer)?;
+        let transferred = self.transport.read_feature(&mut buffer)?;
+        // The device prepends a zero byte to some responses ("shifted" report).
+        if buffer[0] == 0 && buffer[1] == mk61_core::REPORT_ID {
+            for i in 0..(mk61_core::REPORT_SIZE - 1) {
+                buffer[i] = buffer[i + 1];
+            }
+            buffer[mk61_core::REPORT_SIZE - 1] = 0;
+        }
+        if transferred != mk61_core::REPORT_SIZE
+            || buffer[0] != mk61_core::REPORT_ID
+            || buffer[1] != CMD_READ_PROFILE_BLOCK
+            || buffer[2] != profile.get()
+        {
+            return Err(ServiceError::Device(
+                mk61_device::DeviceError::MalformedReport("profile block response mismatch"),
+            ));
+        }
         report = Report::from_bytes(buffer);
-        Ok(report.payload_copy())
+        let _ = report;
+        Ok(buffer)
     }
 
     /// Writes a profile block to device RAM and verifies read-back.
     pub fn write_profile_block_ram(
         &mut self,
+        clock: &dyn crate::Clock,
         profile: Profile,
-        block: &[u8; PAYLOAD_SIZE],
+        block: &[u8; mk61_core::REPORT_SIZE],
     ) -> Result<(), ServiceError> {
-        let mut report = Report::new(CMD_WRITE_PROFILE_BLOCK, profile.get());
-        report.set_payload(block);
-        self.transport.write_feature(report.as_bytes())?;
+        // Convert the read block (opcode 0x82) into a write report (opcode 0x02),
+        // preserving every other byte, including params and fields.
+        let mut report = *block;
+        report[1] = CMD_WRITE_PROFILE_BLOCK;
+        report[2] = profile.get();
+        self.transport.write_feature(&report)?;
+        clock.sleep(std::time::Duration::from_millis(200));
 
         // Read back and compare.
-        let read_back = self.read_profile_block(profile)?;
-        if read_back != *block {
-            return Err(ServiceError::Device(
-                mk61_device::DeviceError::MalformedReport("profile block read-back mismatch"),
-            ));
+        let read_back = self.read_profile_block(clock, profile)?;
+        // Compare from byte 3 onward, ignoring report id / opcode / profile
+        // (the device echoes the read opcode 0x82, not our write opcode 0x02).
+        if read_back[3..] != block[3..] {
+            // The firmware may be slow: wait and read once more.
+            clock.sleep(std::time::Duration::from_millis(400));
+            let read_back2 = self.read_profile_block(clock, profile)?;
+            if read_back2[3..] != block[3..] {
+                let mut diff = None;
+                for (i, (a, b)) in read_back2.iter().zip(block.iter()).enumerate() {
+                    if a != b {
+                        diff = Some((i, *a, *b));
+                        break;
+                    }
+                }
+                let _ = diff;
+                return Err(ServiceError::Device(
+                    mk61_device::DeviceError::MalformedReport("profile block read-back mismatch"),
+                ));
+            }
         }
         Ok(())
     }
@@ -157,15 +217,14 @@ impl<T: Transport> Service<T> {
         save: bool,
     ) -> Result<ApplyLedEffectResult, ServiceError> {
         let effect = mk61_core::resolve_effect(spec).map_err(ServiceError::Core)?;
-        let profile = self.read_active_profile()?;
-        let original_block = self.read_profile_block(profile)?;
+        let profile = self.read_active_profile(clock)?;
+        let original_block = self.read_profile_block(clock, profile)?;
         let previous_mode = original_block[BLOCK_MODE];
 
         let mut block = original_block;
         apply_effect(&mut block, effect, previous_mode);
-
         // RAM apply + verify.
-        self.write_profile_block_ram(profile, &block)?;
+        self.write_profile_block_ram(clock, profile, &block)?;
 
         let mut saved = false;
         if save {
@@ -175,9 +234,9 @@ impl<T: Transport> Service<T> {
             // Flash commit: write twice, count byte 1 then 255, verify each.
             let mut commit_block = block;
             commit_block[BLOCK_CUSTOM_COUNT] = 1;
-            self.write_profile_block_ram(profile, &commit_block)?;
+            self.write_profile_block_ram(clock, profile, &commit_block)?;
             commit_block[BLOCK_CUSTOM_COUNT] = 255;
-            self.write_profile_block_ram(profile, &commit_block)?;
+            self.write_profile_block_ram(clock, profile, &commit_block)?;
             guard.record(clock.now())?;
             saved = true;
         }
@@ -190,13 +249,17 @@ impl<T: Transport> Service<T> {
     }
 
     /// Clears a custom per-key layout: mode 15 -> 0, count -> 255.
-    pub fn clear_custom_effect(&mut self, profile: Profile) -> Result<(), ServiceError> {
-        let mut block = self.read_profile_block(profile)?;
+    pub fn clear_custom_effect(
+        &mut self,
+        clock: &dyn crate::Clock,
+        profile: Profile,
+    ) -> Result<(), ServiceError> {
+        let mut block = self.read_profile_block(clock, profile)?;
         if block[BLOCK_MODE] == mk61_core::CUSTOM_EFFECT_ID {
             block[BLOCK_MODE] = 0;
         }
         block[BLOCK_CUSTOM_COUNT] = 255;
-        self.write_profile_block_ram(profile, &block)
+        self.write_profile_block_ram(clock, profile, &block)
     }
 }
 
@@ -319,14 +382,12 @@ mod tests {
         transport.push_response(report_bytes(
             CMD_READ_PROFILE_BLOCK,
             1,
-            &[0_u8; PAYLOAD_SIZE],
+            &[0_u8; mk61_core::PAYLOAD_SIZE],
         ));
-        // read-back after RAM write
-        transport.push_response(report_bytes(
-            CMD_READ_PROFILE_BLOCK,
-            1,
-            &[0_u8; PAYLOAD_SIZE],
-        ));
+        // read-back after RAM write (count byte now clean = 255)
+        let mut read_back_payload = [0_u8; mk61_core::PAYLOAD_SIZE];
+        read_back_payload[mk61_core::BLOCK_CUSTOM_COUNT - mk61_core::PAYLOAD_OFFSET] = 255;
+        transport.push_response(report_bytes(CMD_READ_PROFILE_BLOCK, 1, &read_back_payload));
 
         let mut service = Service::new(config, transport);
         let backup_dir = std::env::temp_dir().join("mk61-test-backup-ram");
@@ -349,7 +410,7 @@ mod tests {
         assert_eq!(writes[0][1], CMD_READ_ACTIVE_PROFILE);
         assert_eq!(writes[1][1], CMD_READ_PROFILE_BLOCK);
         assert_eq!(writes[2][1], CMD_WRITE_PROFILE_BLOCK);
-        assert_eq!(writes[2][mk61_core::PAYLOAD_OFFSET + BLOCK_MODE], 0);
+        assert_eq!(writes[2][mk61_core::BLOCK_MODE], 0);
         assert_eq!(writes[3][1], CMD_READ_PROFILE_BLOCK);
 
         let _ = std::fs::remove_dir_all(&backup_dir);
@@ -382,22 +443,26 @@ mod tests {
         transport.push_response(report_bytes(
             CMD_READ_PROFILE_BLOCK,
             1,
-            &[0_u8; PAYLOAD_SIZE],
+            &[0_u8; mk61_core::PAYLOAD_SIZE],
         ));
-        // RAM write read-back
-        transport.push_response(report_bytes(
-            CMD_READ_PROFILE_BLOCK,
-            1,
-            &[0_u8; PAYLOAD_SIZE],
-        ));
+        // RAM write read-back (count byte now clean = 255)
+        let mut ram_read_back = [0_u8; mk61_core::PAYLOAD_SIZE];
+        ram_read_back[mk61_core::BLOCK_CUSTOM_COUNT - mk61_core::PAYLOAD_OFFSET] = 255;
+        transport.push_response(report_bytes(CMD_READ_PROFILE_BLOCK, 1, &ram_read_back));
         // flash commit pass 1 read-back (count byte = 1)
-        let mut pass1 = [0_u8; PAYLOAD_SIZE];
+        let mut pass1 = [0_u8; mk61_core::REPORT_SIZE];
+        pass1[0] = mk61_core::REPORT_ID;
+        pass1[1] = CMD_READ_PROFILE_BLOCK;
+        pass1[2] = 1;
         pass1[BLOCK_CUSTOM_COUNT] = 1;
-        transport.push_response(report_bytes(CMD_READ_PROFILE_BLOCK, 1, &pass1));
+        transport.push_response(pass1.to_vec());
         // flash commit pass 2 read-back (count byte = 255)
-        let mut pass2 = [0_u8; PAYLOAD_SIZE];
+        let mut pass2 = [0_u8; mk61_core::REPORT_SIZE];
+        pass2[0] = mk61_core::REPORT_ID;
+        pass2[1] = CMD_READ_PROFILE_BLOCK;
+        pass2[2] = 1;
         pass2[BLOCK_CUSTOM_COUNT] = 255;
-        transport.push_response(report_bytes(CMD_READ_PROFILE_BLOCK, 1, &pass2));
+        transport.push_response(pass2.to_vec());
 
         let mut service = Service::new(config, transport);
         let backup_dir = std::env::temp_dir().join("mk61-test-backup-save");
