@@ -7,14 +7,22 @@
 //! simulator.
 //!
 //! The public API grows milestone by milestone. At the moment it exposes the
-//! crate version, the domain error type and the on-board profile identifier.
+//! crate version, the domain error type, the on-board profile identifier, the
+//! LED colour type and the built-in effect catalogue.
 
 #![forbid(unsafe_code)]
 
+mod color;
 mod error;
+mod effect;
 mod profile;
 
+pub use color::Rgb;
 pub use error::{Error, Result};
+pub use effect::{
+    CUSTOM, CUSTOM_EFFECT_ID, EFFECTS, EFFECT_COUNT, WAVE_COLOR_COUNT, ColorSlots, Effect,
+    custom_effect, effect_by_index, effect_by_name, effect_color_slots, resolve_effect,
+};
 pub use profile::Profile;
 
 /// Version of the core crate, taken from `Cargo.toml` at build time.
