@@ -33,8 +33,8 @@ pub use mk61_device::{
     sanitize_usb_string,
 };
 pub use service::{
-    ApplyLedEffectResult, DEFAULT_FLASH_COOLDOWN, DEFAULT_READ_RETRIES, Service, ServiceConfig,
-    default_state_dir, led_effects,
+    ApplyLedColorResult, ApplyLedEffectResult, DEFAULT_FLASH_COOLDOWN, DEFAULT_READ_RETRIES,
+    Service, ServiceConfig, default_state_dir, led_effects,
 };
 pub use status::{
     CapabilityStatus, LED_CONTROL_ENV, PROFILE_WRITE_ENV, StatusReport, capabilities_from_env,

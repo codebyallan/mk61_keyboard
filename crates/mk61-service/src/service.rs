@@ -7,7 +7,8 @@ use std::time::Duration;
 use crate::ServiceError;
 use mk61_core::{
     BLOCK_CUSTOM_COUNT, BLOCK_MODE, CMD_READ_ACTIVE_PROFILE, CMD_READ_PROFILE_BLOCK,
-    CMD_WRITE_PROFILE_BLOCK, Effect, Profile, Report, apply_effect,
+    CMD_WRITE_PROFILE_BLOCK, Effect, Profile, Report, Rgb, apply_effect, effect_color_slots,
+    write_color,
 };
 use mk61_device::{DEFAULT_SYSFS_ROOT, Transport};
 
@@ -248,6 +249,61 @@ impl<T: Transport> Service<T> {
         })
     }
 
+    /// Sets palette colours for a built-in effect.
+    pub fn apply_led_color(
+        &mut self,
+        clock: &dyn crate::Clock,
+        backup: &crate::BackupStore,
+        guard: &mut crate::FlashGuard,
+        effect_spec: &str,
+        colors: &[Rgb],
+        save: bool,
+    ) -> Result<ApplyLedColorResult, ServiceError> {
+        if colors.is_empty() {
+            return Err(ServiceError::Core(mk61_core::Error::InvalidColorCount));
+        }
+        let effect = mk61_core::resolve_effect(effect_spec).map_err(ServiceError::Core)?;
+        let slots = effect_color_slots(effect).map_err(ServiceError::Core)?;
+        let profile = self.read_active_profile(clock)?;
+        let original_block = self.read_profile_block(clock, profile)?;
+        let previous_mode = original_block[BLOCK_MODE];
+
+        let mut block = original_block;
+        // Repeat the supplied colours across the effect's slots.
+        for index in 0..slots.count {
+            let color = colors[index % colors.len()];
+            write_color(&mut block, slots, index, color).map_err(ServiceError::Core)?;
+        }
+        // Keep the commit flag clean for non-custom effects.
+        if effect.index != mk61_core::CUSTOM_EFFECT_ID {
+            block[BLOCK_CUSTOM_COUNT] = 255;
+        }
+        let _ = previous_mode;
+
+        // RAM apply + verify.
+        self.write_profile_block_ram(clock, profile, &block)?;
+
+        let mut saved = false;
+        if save {
+            guard.check(clock.now())?;
+            backup.save("color", &original_block)?;
+            let mut commit_block = block;
+            commit_block[BLOCK_CUSTOM_COUNT] = 1;
+            self.write_profile_block_ram(clock, profile, &commit_block)?;
+            commit_block[BLOCK_CUSTOM_COUNT] = 255;
+            self.write_profile_block_ram(clock, profile, &commit_block)?;
+            guard.record(clock.now())?;
+            saved = true;
+        }
+
+        Ok(ApplyLedColorResult {
+            profile,
+            effect_name: effect.name.to_string(),
+            color_count: slots.count,
+            saved,
+        })
+    }
+
     /// Clears a custom per-key layout: mode 15 -> 0, count -> 255.
     pub fn clear_custom_effect(
         &mut self,
@@ -270,6 +326,19 @@ pub struct ApplyLedEffectResult {
     pub profile: Profile,
     /// Name of the applied effect.
     pub effect_name: String,
+    /// Whether the change was committed to flash.
+    pub saved: bool,
+}
+
+/// Result of setting palette colours for an LED effect.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApplyLedColorResult {
+    /// Profile the colours were applied to.
+    pub profile: Profile,
+    /// Name of the effect whose colours were changed.
+    pub effect_name: String,
+    /// Number of colour slots written.
+    pub color_count: usize,
     /// Whether the change was committed to flash.
     pub saved: bool,
 }

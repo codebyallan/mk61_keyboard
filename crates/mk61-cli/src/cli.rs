@@ -122,6 +122,28 @@ pub enum LedCommand {
     #[command(verbatim_doc_comment)]
     Effects,
 
+    /// Set palette colours for a built-in effect.
+    ///
+    /// Applies the colours to the active profile in RAM. Pass `--save` to commit
+    /// the change to flash after a read-back verification.
+    ///
+    /// # Examples
+    ///
+    /// ```text
+    /// mk61 led color wave FF0000 00FF00 0000FF --save
+    /// ```
+    #[command(verbatim_doc_comment)]
+    Color {
+        /// Effect name or numeric index.
+        effect: String,
+        /// One or more RRGGBB colours (repeated across the effect's slots).
+        #[arg(value_name = "RRGGBB", required = true)]
+        colors: Vec<String>,
+        /// Commit the change to flash after verification.
+        #[arg(long)]
+        save: bool,
+    },
+
     /// Select an LED effect.
     ///
     /// Applies the effect to the active profile in RAM. Pass `--save` to commit
@@ -242,6 +264,25 @@ mod tests {
     fn parses_the_led_effects_command() {
         let cli = Cli::try_parse_from(["mk61", "led", "effects"]).unwrap();
         assert!(matches!(cli.command, Command::Led(LedCommand::Effects)));
+    }
+
+    #[test]
+    fn parses_the_led_color_command() {
+        let cli =
+            Cli::try_parse_from(["mk61", "led", "color", "wave", "FF0000", "00FF00", "--save"])
+                .unwrap();
+        match cli.command {
+            Command::Led(LedCommand::Color {
+                effect,
+                colors,
+                save,
+            }) => {
+                assert_eq!(effect, "wave");
+                assert_eq!(colors, vec!["FF0000", "00FF00"]);
+                assert!(save);
+            }
+            _ => panic!("wrong command"),
+        }
     }
 
     #[test]

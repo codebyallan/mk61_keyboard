@@ -81,6 +81,43 @@ fn run(cli: Cli) -> Result<(), Box<dyn Error>> {
                     }
                 )?;
             }
+            LedCommand::Color {
+                effect,
+                colors,
+                save,
+            } => {
+                let parsed_colors: Vec<mk61_core::Rgb> = colors
+                    .iter()
+                    .map(|value| mk61_core::Rgb::parse(value))
+                    .collect::<Result<_, _>>()
+                    .map_err(Box::<dyn Error>::from)?;
+                let device_path = resolve_device_path(&config)?;
+                let transport =
+                    HidrawTransport::open(&device_path).map_err(Box::<dyn Error>::from)?;
+                let mut service = mk61_service::Service::new(config.clone(), transport);
+                let backup = mk61_service::BackupStore::from_config(&config);
+                let mut guard = mk61_service::FlashGuard::from_config(&config);
+                let result = service.apply_led_color(
+                    &mk61_service::SystemClock,
+                    &backup,
+                    &mut guard,
+                    &effect,
+                    &parsed_colors,
+                    save,
+                )?;
+                writeln!(
+                    io::stdout().lock(),
+                    "set {} colour(s) for '{}' on profile {}{}",
+                    result.color_count,
+                    result.effect_name,
+                    result.profile,
+                    if result.saved {
+                        " (saved to flash)"
+                    } else {
+                        ""
+                    }
+                )?;
+            }
         },
     }
 
