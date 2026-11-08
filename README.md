@@ -63,6 +63,13 @@ mk61-cli ---> mk61-service ---> mk61-device
 may eventually contain `unsafe` code, and every block must have a `SAFETY`
 comment.
 
+## Installation
+
+```sh
+./install.sh          # build + install to ~/.local/bin, plus a udev rule
+./uninstall.sh        # remove the binary (--purge also removes state)
+```
+
 ## License
 
 GPL-2.0-only. See [`LICENSE`](LICENSE).
