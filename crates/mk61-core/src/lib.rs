@@ -16,6 +16,7 @@ mod color;
 mod effect;
 mod error;
 mod profile;
+mod protocol;
 
 pub use color::Rgb;
 pub use effect::{
@@ -24,6 +25,7 @@ pub use effect::{
 };
 pub use error::{Error, Result};
 pub use profile::Profile;
+pub use protocol::*;
 
 /// Version of the core crate, taken from `Cargo.toml` at build time.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

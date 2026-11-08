@@ -121,6 +121,26 @@ pub enum LedCommand {
     /// ```
     #[command(verbatim_doc_comment)]
     Effects,
+
+    /// Select an LED effect.
+    ///
+    /// Applies the effect to the active profile in RAM. Pass `--save` to commit
+    /// the change to flash after a read-back verification.
+    ///
+    /// # Examples
+    ///
+    /// ```text
+    /// mk61 led effect wave
+    /// mk61 led effect 5 --save
+    /// ```
+    #[command(verbatim_doc_comment)]
+    Effect {
+        /// Effect name or numeric index.
+        spec: String,
+        /// Commit the change to flash after verification.
+        #[arg(long)]
+        save: bool,
+    },
 }
 
 impl Cli {

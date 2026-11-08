@@ -4,10 +4,11 @@
 //! This type fixes the state file location and cooldown now:
 //! `$STATE_DIR/flash.state`, one successful commit per configured cooldown.
 
+use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use crate::ServiceConfig;
+use crate::{ServiceConfig, ServiceError};
 
 /// Prevents rapid repeated writes to the keyboard's flash memory.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -39,6 +40,46 @@ impl FlashGuard {
     /// Returns the configured cooldown.
     pub fn cooldown(&self) -> Duration {
         self.cooldown
+    }
+
+    /// Returns an error when a commit was recorded within the cooldown window.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ServiceError::FlashCooldown`] when the remaining time has not
+    /// elapsed, and [`ServiceError::Device`] on I/O failure.
+    pub fn check(&self, now: SystemTime) -> Result<(), ServiceError> {
+        if let Ok(contents) = fs::read_to_string(&self.path) {
+            if let Ok(stored) = contents.trim().parse::<u128>() {
+                let stored_time = UNIX_EPOCH + Duration::from_nanos(stored as u64);
+                if let Ok(elapsed) = now.duration_since(stored_time) {
+                    if elapsed < self.cooldown {
+                        return Err(ServiceError::FlashCooldown {
+                            remaining: self.cooldown - elapsed,
+                        });
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Records a successful commit timestamp.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ServiceError::Device`] when the state file cannot be written.
+    pub fn record(&self, now: SystemTime) -> Result<(), ServiceError> {
+        if let Some(parent) = self.path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        let nanos = now
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        fs::write(&self.path, nanos.to_string())
+            .map_err(|e| ServiceError::Device(mk61_device::DeviceError::Io(e)))?;
+        Ok(())
     }
 }
 

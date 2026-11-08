@@ -28,10 +28,13 @@ pub use mk61_core::{
     CUSTOM, CUSTOM_EFFECT_ID, ColorSlots, EFFECT_COUNT, EFFECTS, Effect, WAVE_COLOR_COUNT,
     custom_effect, effect_by_index, effect_by_name, effect_color_slots, resolve_effect,
 };
-pub use mk61_device::{DEFAULT_SYSFS_ROOT, DeviceInfo, PRODUCT_ID, VENDOR_ID, sanitize_usb_string};
+pub use mk61_device::{
+    DEFAULT_SYSFS_ROOT, DeviceError, DeviceInfo, HidrawTransport, PRODUCT_ID, VENDOR_ID,
+    sanitize_usb_string,
+};
 pub use service::{
-    DEFAULT_FLASH_COOLDOWN, DEFAULT_READ_RETRIES, Service, ServiceConfig, default_state_dir,
-    led_effects,
+    ApplyLedEffectResult, DEFAULT_FLASH_COOLDOWN, DEFAULT_READ_RETRIES, Service, ServiceConfig,
+    default_state_dir, led_effects,
 };
 pub use status::{
     CapabilityStatus, LED_CONTROL_ENV, PROFILE_WRITE_ENV, StatusReport, capabilities_from_env,

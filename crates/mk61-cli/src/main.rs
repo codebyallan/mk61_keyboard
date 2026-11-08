@@ -14,7 +14,12 @@ use std::io;
 use std::process::ExitCode;
 
 use clap::Parser;
-use mk61_service::{DeviceCatalog, collect_status};
+use mk61_service::HidrawTransport;
+use mk61_service::{
+    BackupStore, DeviceCatalog, FlashGuard, SystemClock, collect_status, led_effects,
+};
+use std::io::Write;
+use std::path::PathBuf;
 
 use crate::cli::{Cli, Command, LedCommand};
 
@@ -52,11 +57,47 @@ fn run(cli: Cli) -> Result<(), Box<dyn Error>> {
         }
         Command::Led(led_command) => match led_command {
             LedCommand::Effects => {
-                let effects = mk61_service::led_effects();
+                let effects = led_effects();
                 output::print_effects(&mut io::stdout().lock(), &effects)?;
+            }
+            LedCommand::Effect { spec, save } => {
+                let device_path = resolve_device_path(&config)?;
+                let transport =
+                    HidrawTransport::open(&device_path).map_err(Box::<dyn Error>::from)?;
+                let mut service = mk61_service::Service::new(config.clone(), transport);
+                let backup = BackupStore::from_config(&config);
+                let mut guard = FlashGuard::from_config(&config);
+                let result =
+                    service.apply_led_effect(&SystemClock, &backup, &mut guard, &spec, save)?;
+                writeln!(
+                    io::stdout().lock(),
+                    "applied effect '{}' to profile {}{}",
+                    result.effect_name,
+                    result.profile,
+                    if result.saved {
+                        " (saved to flash)"
+                    } else {
+                        ""
+                    }
+                )?;
             }
         },
     }
 
     Ok(())
+}
+
+fn resolve_device_path(config: &mk61_service::ServiceConfig) -> Result<PathBuf, Box<dyn Error>> {
+    if let Some(path) = &config.device_path {
+        return Ok(path.clone());
+    }
+    let catalog = DeviceCatalog::new(&config.sysfs_root);
+    let devices = catalog.list()?;
+    let supported = devices.into_iter().find(|d| d.is_supported());
+    match supported {
+        Some(device) => Ok(device.path),
+        None => Err(Box::<dyn Error>::from(mk61_service::ServiceError::Device(
+            mk61_service::DeviceError::NotFound,
+        ))),
+    }
 }

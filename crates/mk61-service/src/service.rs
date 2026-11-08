@@ -4,7 +4,11 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use mk61_core::Effect;
+use crate::ServiceError;
+use mk61_core::{
+    BLOCK_CUSTOM_COUNT, BLOCK_MODE, CMD_READ_ACTIVE_PROFILE, CMD_READ_PROFILE_BLOCK,
+    CMD_WRITE_PROFILE_BLOCK, Effect, PAYLOAD_SIZE, Profile, Report, apply_effect,
+};
 use mk61_device::{DEFAULT_SYSFS_ROOT, Transport};
 
 /// Minimum time between two flash commits.
@@ -99,6 +103,112 @@ impl<T: Transport> Service<T> {
     pub fn transport_mut(&mut self) -> &mut T {
         &mut self.transport
     }
+
+    /// Reads the active profile number from the device.
+    pub fn read_active_profile(&mut self) -> Result<Profile, ServiceError> {
+        let mut report = Report::new(CMD_READ_ACTIVE_PROFILE, 0);
+        self.transport.write_feature(report.as_bytes())?;
+        let mut buffer = [0_u8; mk61_core::REPORT_SIZE];
+        self.transport.read_feature(&mut buffer)?;
+        report = Report::from_bytes(buffer);
+        Ok(Profile::new(report.param0())?)
+    }
+
+    /// Reads a 256-byte profile block from the device.
+    pub fn read_profile_block(
+        &mut self,
+        profile: Profile,
+    ) -> Result<[u8; PAYLOAD_SIZE], ServiceError> {
+        let mut report = Report::new(CMD_READ_PROFILE_BLOCK, profile.get());
+        self.transport.write_feature(report.as_bytes())?;
+        let mut buffer = [0_u8; mk61_core::REPORT_SIZE];
+        self.transport.read_feature(&mut buffer)?;
+        report = Report::from_bytes(buffer);
+        Ok(report.payload_copy())
+    }
+
+    /// Writes a profile block to device RAM and verifies read-back.
+    pub fn write_profile_block_ram(
+        &mut self,
+        profile: Profile,
+        block: &[u8; PAYLOAD_SIZE],
+    ) -> Result<(), ServiceError> {
+        let mut report = Report::new(CMD_WRITE_PROFILE_BLOCK, profile.get());
+        report.set_payload(block);
+        self.transport.write_feature(report.as_bytes())?;
+
+        // Read back and compare.
+        let read_back = self.read_profile_block(profile)?;
+        if read_back != *block {
+            return Err(ServiceError::Device(
+                mk61_device::DeviceError::MalformedReport("profile block read-back mismatch"),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Applies an LED effect, optionally committing to flash.
+    pub fn apply_led_effect(
+        &mut self,
+        clock: &dyn crate::Clock,
+        backup: &crate::BackupStore,
+        guard: &mut crate::FlashGuard,
+        spec: &str,
+        save: bool,
+    ) -> Result<ApplyLedEffectResult, ServiceError> {
+        let effect = mk61_core::resolve_effect(spec).map_err(ServiceError::Core)?;
+        let profile = self.read_active_profile()?;
+        let original_block = self.read_profile_block(profile)?;
+        let previous_mode = original_block[BLOCK_MODE];
+
+        let mut block = original_block;
+        apply_effect(&mut block, effect, previous_mode);
+
+        // RAM apply + verify.
+        self.write_profile_block_ram(profile, &block)?;
+
+        let mut saved = false;
+        if save {
+            guard.check(clock.now())?;
+            // Backup original block before flash.
+            backup.save("profile", &original_block)?;
+            // Flash commit: write twice, count byte 1 then 255, verify each.
+            let mut commit_block = block;
+            commit_block[BLOCK_CUSTOM_COUNT] = 1;
+            self.write_profile_block_ram(profile, &commit_block)?;
+            commit_block[BLOCK_CUSTOM_COUNT] = 255;
+            self.write_profile_block_ram(profile, &commit_block)?;
+            guard.record(clock.now())?;
+            saved = true;
+        }
+
+        Ok(ApplyLedEffectResult {
+            profile,
+            effect_name: effect.name.to_string(),
+            saved,
+        })
+    }
+
+    /// Clears a custom per-key layout: mode 15 -> 0, count -> 255.
+    pub fn clear_custom_effect(&mut self, profile: Profile) -> Result<(), ServiceError> {
+        let mut block = self.read_profile_block(profile)?;
+        if block[BLOCK_MODE] == mk61_core::CUSTOM_EFFECT_ID {
+            block[BLOCK_MODE] = 0;
+        }
+        block[BLOCK_CUSTOM_COUNT] = 255;
+        self.write_profile_block_ram(profile, &block)
+    }
+}
+
+/// Result of applying an LED effect.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApplyLedEffectResult {
+    /// Profile the effect was applied to.
+    pub profile: Profile,
+    /// Name of the applied effect.
+    pub effect_name: String,
+    /// Whether the change was committed to flash.
+    pub saved: bool,
 }
 
 /// Returns every LED effect the keyboard firmware supports.
@@ -115,6 +225,7 @@ pub fn led_effects() -> Vec<Effect> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{BackupStore, FlashGuard, SystemClock};
     use mk61_device::MockTransport;
 
     #[test]
@@ -184,5 +295,125 @@ mod tests {
             .write_feature(&[0x07])
             .expect("mock writes cannot fail");
         assert_eq!(service.transport().writes(), &[vec![0x07]]);
+    }
+
+    fn report_bytes(command: u8, param0: u8, payload: &[u8]) -> Vec<u8> {
+        let mut buf = vec![0_u8; mk61_core::REPORT_SIZE];
+        buf[0] = mk61_core::REPORT_ID;
+        buf[1] = command;
+        buf[2] = param0;
+        if !payload.is_empty() {
+            buf[mk61_core::PAYLOAD_OFFSET..mk61_core::PAYLOAD_OFFSET + payload.len()]
+                .copy_from_slice(payload);
+        }
+        buf
+    }
+
+    #[test]
+    fn apply_led_effect_updates_ram_without_saving() {
+        let config = ServiceConfig::default();
+        let mut transport = MockTransport::new();
+        // read active profile -> profile 1
+        transport.push_response(report_bytes(CMD_READ_ACTIVE_PROFILE, 1, &[]));
+        // read profile block (original)
+        transport.push_response(report_bytes(
+            CMD_READ_PROFILE_BLOCK,
+            1,
+            &[0_u8; PAYLOAD_SIZE],
+        ));
+        // read-back after RAM write
+        transport.push_response(report_bytes(
+            CMD_READ_PROFILE_BLOCK,
+            1,
+            &[0_u8; PAYLOAD_SIZE],
+        ));
+
+        let mut service = Service::new(config, transport);
+        let backup_dir = std::env::temp_dir().join("mk61-test-backup-ram");
+        let _ = std::fs::remove_dir_all(&backup_dir);
+        let backup = BackupStore::new(&backup_dir);
+        let mut guard = FlashGuard::new(backup_dir.join("flash.state"), DEFAULT_FLASH_COOLDOWN);
+
+        let result = service
+            .apply_led_effect(&SystemClock, &backup, &mut guard, "wave", false)
+            .expect("apply should succeed");
+
+        assert_eq!(result.profile.get(), 1);
+        assert_eq!(result.effect_name, "wave");
+        assert!(!result.saved);
+
+        // Mode byte should have been set to 0 (wave) in the written block.
+        let writes = service.transport().writes();
+        // writes: 0x81, 0x82, 0x83, 0x82
+        assert_eq!(writes.len(), 4);
+        assert_eq!(writes[0][1], CMD_READ_ACTIVE_PROFILE);
+        assert_eq!(writes[1][1], CMD_READ_PROFILE_BLOCK);
+        assert_eq!(writes[2][1], CMD_WRITE_PROFILE_BLOCK);
+        assert_eq!(writes[2][mk61_core::PAYLOAD_OFFSET + BLOCK_MODE], 0);
+        assert_eq!(writes[3][1], CMD_READ_PROFILE_BLOCK);
+
+        let _ = std::fs::remove_dir_all(&backup_dir);
+    }
+
+    #[test]
+    fn apply_led_effect_rejects_unknown_effect() {
+        let config = ServiceConfig::default();
+        let mut service = Service::new(config, MockTransport::new());
+        let backup_dir = std::env::temp_dir().join("mk61-test-backup-unknown");
+        let backup = BackupStore::new(&backup_dir);
+        let mut guard = FlashGuard::new(backup_dir.join("flash.state"), DEFAULT_FLASH_COOLDOWN);
+
+        let err = service
+            .apply_led_effect(&SystemClock, &backup, &mut guard, "nope", false)
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            ServiceError::Core(mk61_core::Error::UnknownEffect)
+        ));
+    }
+
+    #[test]
+    fn apply_led_effect_saves_with_backup_and_cooldown() {
+        let config = ServiceConfig::default();
+        let mut transport = MockTransport::new();
+        // read active profile
+        transport.push_response(report_bytes(CMD_READ_ACTIVE_PROFILE, 1, &[]));
+        // read original block
+        transport.push_response(report_bytes(
+            CMD_READ_PROFILE_BLOCK,
+            1,
+            &[0_u8; PAYLOAD_SIZE],
+        ));
+        // RAM write read-back
+        transport.push_response(report_bytes(
+            CMD_READ_PROFILE_BLOCK,
+            1,
+            &[0_u8; PAYLOAD_SIZE],
+        ));
+        // flash commit pass 1 read-back (count byte = 1)
+        let mut pass1 = [0_u8; PAYLOAD_SIZE];
+        pass1[BLOCK_CUSTOM_COUNT] = 1;
+        transport.push_response(report_bytes(CMD_READ_PROFILE_BLOCK, 1, &pass1));
+        // flash commit pass 2 read-back (count byte = 255)
+        let mut pass2 = [0_u8; PAYLOAD_SIZE];
+        pass2[BLOCK_CUSTOM_COUNT] = 255;
+        transport.push_response(report_bytes(CMD_READ_PROFILE_BLOCK, 1, &pass2));
+
+        let mut service = Service::new(config, transport);
+        let backup_dir = std::env::temp_dir().join("mk61-test-backup-save");
+        let _ = std::fs::remove_dir_all(&backup_dir);
+        let backup = BackupStore::new(&backup_dir);
+        let mut guard = FlashGuard::new(backup_dir.join("flash.state"), DEFAULT_FLASH_COOLDOWN);
+
+        let result = service
+            .apply_led_effect(&SystemClock, &backup, &mut guard, "wave", true)
+            .expect("apply+save should succeed");
+
+        assert!(result.saved);
+        // A backup file should have been written.
+        let entries: Vec<_> = std::fs::read_dir(backup.directory()).unwrap().collect();
+        assert!(!entries.is_empty());
+
+        let _ = std::fs::remove_dir_all(&backup_dir);
     }
 }

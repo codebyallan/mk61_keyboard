@@ -26,6 +26,7 @@ mk61 help
 mk61 list
 mk61 status
 mk61 led effects
+mk61 led effect <name|index> [--save]
 mk61 --version
 ```
 

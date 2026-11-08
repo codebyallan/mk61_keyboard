@@ -499,7 +499,6 @@ fn led_effects_has_long_help() {
 #[test]
 fn planned_commands_are_still_usage_errors() {
     for args in [
-        &["led", "effect", "wave"][..],
         &["led", "save"][..],
         &["led", "color", "wave", "FF0000"][..],
         &["led", "custom", "ESC=FF0000"][..],
