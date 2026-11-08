@@ -16,7 +16,7 @@ use std::process::ExitCode;
 use clap::Parser;
 use mk61_service::{DeviceCatalog, collect_status};
 
-use crate::cli::{Cli, Command};
+use crate::cli::{Cli, Command, LedCommand};
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
@@ -50,6 +50,12 @@ fn run(cli: Cli) -> Result<(), Box<dyn Error>> {
             let report = collect_status(&config)?;
             output::print_status(&mut io::stdout().lock(), &report)?;
         }
+        Command::Led(led_command) => match led_command {
+            LedCommand::Effects => {
+                let effects = mk61_service::led_effects();
+                output::print_effects(&mut io::stdout().lock(), &effects)?;
+            }
+        },
     }
 
     Ok(())

@@ -25,6 +25,7 @@ cargo test --workspace
 mk61 help
 mk61 list
 mk61 status
+mk61 led effects
 mk61 --version
 ```
 

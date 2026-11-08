@@ -2,7 +2,7 @@
 
 use std::io::{self, Write};
 
-use mk61_service::{DeviceInfo, StatusReport};
+use mk61_service::{DeviceInfo, Effect, StatusReport, effect_color_slots};
 
 /// Command overview printed by `mk61 help`.
 pub const OVERVIEW: &str = "\
@@ -19,7 +19,7 @@ Global options:
 Commands:
   help               Show this overview
   list               List detected keyboards
-  status             Show the active profile and LED settings
+  status             Show device and capability status
   led effects        List built-in and custom LED effects
   led effect <name|index> [--save]
                      Select an LED effect (RAM only unless --save)
@@ -42,10 +42,10 @@ Exit status:
   1  runtime error
   2  usage error
 
-Current milestone: `help`, `list`, and `status` are implemented. `list` and
-`status` are read-only and never open a device node; hardware queries and LED
-commands arrive in later milestones. Run `mk61 --help` for the generated CLI
-help.
+Current milestone: `help`, `list`, `status`, and `led effects` are implemented. `list`,
+`status` and `led effects` are read-only; hardware queries, LED writes and the
+remaining LED commands arrive in later milestones. Run `mk61 --help` for the
+generated CLI help.
 ";
 
 /// Compact command list appended to the generated `--help` output.
@@ -65,7 +65,7 @@ Commands:
   led custom         Define or clear a per-key layout (writes flash)
   keys               List key names and matrix positions
 
-Implemented in this milestone: `help`, `list`, and `status`.";
+Implemented in this milestone: `help`, `list`, `status`, and `led effects`.";
 
 /// Writes the command overview to `writer`.
 ///
@@ -114,6 +114,30 @@ pub fn print_devices(writer: &mut impl Write, devices: &[DeviceInfo]) -> io::Res
         )?;
     }
 
+    writer.flush()
+}
+
+/// Writes the LED effect catalogue to `writer`.
+///
+/// The built-in effects come first and the custom per-key effect last. Effects
+/// without colour slots are listed with `none`.
+///
+/// # Errors
+///
+/// Returns any I/O error produced while writing or flushing the stream.
+pub fn print_effects(writer: &mut impl Write, effects: &[Effect]) -> io::Result<()> {
+    writeln!(writer, "index  effect         colors  description")?;
+    for effect in effects {
+        let colors = match effect_color_slots(effect) {
+            Ok(slots) => format!("1..{}", slots.count),
+            Err(_) => "none".to_owned(),
+        };
+        writeln!(
+            writer,
+            "  {:>2}  {:<12} {:<7} {}",
+            effect.index, effect.name, colors, effect.description
+        )?;
+    }
     writer.flush()
 }
 
@@ -187,6 +211,7 @@ mod tests {
 
     use super::*;
     use mk61_service::CapabilityStatus;
+    use mk61_service::ColorSlots;
 
     const PLANNED_COMMANDS: [&str; 8] = [
         "list",
@@ -298,6 +323,37 @@ mod tests {
         print_devices(&mut buffer, &[info]).unwrap();
 
         assert!(String::from_utf8(buffer).unwrap().contains("(unknown)"));
+    }
+
+    #[test]
+    fn print_effects_lists_builtins_and_reports_slot_counts() {
+        let effects = vec![
+            Effect {
+                index: 0,
+                name: "wave",
+                description: "wave across the matrix",
+                colors: Some(ColorSlots {
+                    offset: 84,
+                    count: 14,
+                }),
+            },
+            Effect {
+                index: 2,
+                name: "cycle",
+                description: "hue rotation",
+                colors: None,
+            },
+        ];
+        let mut buffer = Vec::new();
+
+        print_effects(&mut buffer, &effects).unwrap();
+
+        let text = String::from_utf8(buffer).unwrap();
+        assert!(text.contains("index  effect"));
+        assert!(text.contains("wave"));
+        assert!(text.contains("1..14"));
+        assert!(text.contains("cycle"));
+        assert!(text.contains("none"));
     }
 
     fn status_report(devices: &[DeviceInfo], capabilities: CapabilityStatus) -> StatusReport {

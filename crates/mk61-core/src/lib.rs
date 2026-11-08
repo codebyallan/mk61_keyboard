@@ -13,16 +13,16 @@
 #![forbid(unsafe_code)]
 
 mod color;
-mod error;
 mod effect;
+mod error;
 mod profile;
 
 pub use color::Rgb;
-pub use error::{Error, Result};
 pub use effect::{
-    CUSTOM, CUSTOM_EFFECT_ID, EFFECTS, EFFECT_COUNT, WAVE_COLOR_COUNT, ColorSlots, Effect,
+    CUSTOM, CUSTOM_EFFECT_ID, ColorSlots, EFFECT_COUNT, EFFECTS, Effect, WAVE_COLOR_COUNT,
     custom_effect, effect_by_index, effect_by_name, effect_color_slots, resolve_effect,
 };
+pub use error::{Error, Result};
 pub use profile::Profile;
 
 /// Version of the core crate, taken from `Cargo.toml` at build time.

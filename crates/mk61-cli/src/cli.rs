@@ -86,6 +86,10 @@ pub enum Command {
     #[command(verbatim_doc_comment)]
     List,
 
+    /// LED lighting control.
+    #[command(subcommand)]
+    Led(LedCommand),
+
     /// Show device and capability status.
     ///
     /// Reports whether a daemon is supervising the keyboard, which keyboards
@@ -100,6 +104,23 @@ pub enum Command {
     /// ```
     #[command(verbatim_doc_comment)]
     Status,
+}
+
+/// LED lighting subcommands.
+#[derive(Debug, Subcommand)]
+pub enum LedCommand {
+    /// List the LED effects supported by the keyboard.
+    ///
+    /// Prints the built-in effects with their colour slot counts and the custom
+    /// per-key effect.
+    ///
+    /// # Examples
+    ///
+    /// ```text
+    /// mk61 led effects
+    /// ```
+    #[command(verbatim_doc_comment)]
+    Effects,
 }
 
 impl Cli {
@@ -195,6 +216,12 @@ mod tests {
     fn parses_the_status_command() {
         let cli = Cli::try_parse_from(["mk61", "status"]).unwrap();
         assert!(matches!(cli.command, Command::Status));
+    }
+
+    #[test]
+    fn parses_the_led_effects_command() {
+        let cli = Cli::try_parse_from(["mk61", "led", "effects"]).unwrap();
+        assert!(matches!(cli.command, Command::Led(LedCommand::Effects)));
     }
 
     #[test]

@@ -43,19 +43,117 @@ pub struct Effect {
 
 /// The built-in effects supported by the keyboard firmware.
 pub const EFFECTS: [Effect; EFFECT_COUNT] = [
-    Effect { index: 0, name: "wave", description: "wave across the matrix", colors: Some(ColorSlots { offset: 84, count: WAVE_COLOR_COUNT }) },
-    Effect { index: 1, name: "breath", description: "smooth colour pulse", colors: Some(ColorSlots { offset: 33, count: 2 }) },
-    Effect { index: 2, name: "cycle", description: "hue rotation over the matrix", colors: None },
-    Effect { index: 3, name: "starlight", description: "single colour starlight", colors: Some(ColorSlots { offset: 39, count: 1 }) },
-    Effect { index: 4, name: "encounter", description: "encounter colour pair", colors: Some(ColorSlots { offset: 42, count: 2 }) },
-    Effect { index: 5, name: "rain", description: "rain drop animation", colors: Some(ColorSlots { offset: 48, count: 1 }) },
-    Effect { index: 6, name: "pulse", description: "pulse animation", colors: Some(ColorSlots { offset: 51, count: 2 }) },
-    Effect { index: 7, name: "cross", description: "cross fade", colors: Some(ColorSlots { offset: 57, count: 2 }) },
-    Effect { index: 8, name: "trigger", description: "trigger flash", colors: Some(ColorSlots { offset: 63, count: 2 }) },
-    Effect { index: 9, name: "ripple", description: "ripple propagation", colors: Some(ColorSlots { offset: 69, count: 2 }) },
-    Effect { index: 10, name: "blossom", description: "blossom animation", colors: Some(ColorSlots { offset: 75, count: 2 }) },
-    Effect { index: 11, name: "game_mode", description: "WASD only lighting", colors: None },
-    Effect { index: 12, name: "lighting", description: "constant single colour", colors: Some(ColorSlots { offset: 81, count: 1 }) },
+    Effect {
+        index: 0,
+        name: "wave",
+        description: "wave across the matrix",
+        colors: Some(ColorSlots {
+            offset: 84,
+            count: WAVE_COLOR_COUNT,
+        }),
+    },
+    Effect {
+        index: 1,
+        name: "breath",
+        description: "smooth colour pulse",
+        colors: Some(ColorSlots {
+            offset: 33,
+            count: 2,
+        }),
+    },
+    Effect {
+        index: 2,
+        name: "cycle",
+        description: "hue rotation over the matrix",
+        colors: None,
+    },
+    Effect {
+        index: 3,
+        name: "starlight",
+        description: "single colour starlight",
+        colors: Some(ColorSlots {
+            offset: 39,
+            count: 1,
+        }),
+    },
+    Effect {
+        index: 4,
+        name: "encounter",
+        description: "encounter colour pair",
+        colors: Some(ColorSlots {
+            offset: 42,
+            count: 2,
+        }),
+    },
+    Effect {
+        index: 5,
+        name: "rain",
+        description: "rain drop animation",
+        colors: Some(ColorSlots {
+            offset: 48,
+            count: 1,
+        }),
+    },
+    Effect {
+        index: 6,
+        name: "pulse",
+        description: "pulse animation",
+        colors: Some(ColorSlots {
+            offset: 51,
+            count: 2,
+        }),
+    },
+    Effect {
+        index: 7,
+        name: "cross",
+        description: "cross fade",
+        colors: Some(ColorSlots {
+            offset: 57,
+            count: 2,
+        }),
+    },
+    Effect {
+        index: 8,
+        name: "trigger",
+        description: "trigger flash",
+        colors: Some(ColorSlots {
+            offset: 63,
+            count: 2,
+        }),
+    },
+    Effect {
+        index: 9,
+        name: "ripple",
+        description: "ripple propagation",
+        colors: Some(ColorSlots {
+            offset: 69,
+            count: 2,
+        }),
+    },
+    Effect {
+        index: 10,
+        name: "blossom",
+        description: "blossom animation",
+        colors: Some(ColorSlots {
+            offset: 75,
+            count: 2,
+        }),
+    },
+    Effect {
+        index: 11,
+        name: "game_mode",
+        description: "WASD only lighting",
+        colors: None,
+    },
+    Effect {
+        index: 12,
+        name: "lighting",
+        description: "constant single colour",
+        colors: Some(ColorSlots {
+            offset: 81,
+            count: 1,
+        }),
+    },
 ];
 
 /// Returns the built-in effect registered at `index`.
@@ -102,9 +200,7 @@ pub fn effect_by_name(name: &str) -> Option<&'static Effect> {
             }
         }
     }
-    EFFECTS
-        .iter()
-        .find(|effect| normalize(effect.name) == key)
+    EFFECTS.iter().find(|effect| normalize(effect.name) == key)
 }
 
 /// The custom per-key LED effect.
@@ -197,7 +293,10 @@ mod tests {
     fn colour_slots_are_exposed_per_effect() {
         assert_eq!(
             effect_color_slots(&EFFECTS[0]).unwrap(),
-            ColorSlots { offset: 84, count: WAVE_COLOR_COUNT }
+            ColorSlots {
+                offset: 84,
+                count: WAVE_COLOR_COUNT
+            }
         );
         assert_eq!(
             effect_color_slots(&EFFECTS[2]),

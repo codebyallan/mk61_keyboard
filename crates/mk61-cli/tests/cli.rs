@@ -126,7 +126,7 @@ fn help_subcommand_prints_the_overview_and_succeeds() {
             "overview is missing exit status {exit_status}"
         );
     }
-    assert!(text.contains("`help`, `list`, and `status` are implemented"));
+    assert!(text.contains("`help`, `list`, `status`, and `led effects` are implemented"));
 }
 
 #[test]
@@ -156,7 +156,11 @@ fn help_flag_prints_generated_help_and_succeeds() {
     assert!(text.contains("GLOBAL OPTIONS"));
     assert!(text.contains("led effects"));
     assert!(text.contains("Commands:"));
-    assert!(text.contains("Implemented in this milestone: `help`, `list`, and `status`."));
+    assert!(
+        text.contains(
+            "Implemented in this milestone: `help`, `list`, `status`, and `led effects`."
+        )
+    );
 }
 
 #[test]
@@ -471,9 +475,30 @@ fn status_rejects_a_missing_device() {
 }
 
 #[test]
+fn led_effects_lists_the_builtins_and_the_custom_effect() {
+    let output = run(&["led", "effects"]);
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty());
+
+    let text = stdout(&output);
+    assert!(text.contains("index  effect"));
+    for effect in ["wave", "breath", "cycle", "lighting", "custom"] {
+        assert!(text.contains(effect), "effect list is missing {effect}");
+    }
+}
+
+#[test]
+fn led_effects_has_long_help() {
+    let output = run(&["led", "effects", "--help"]);
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(stderr(&output).is_empty());
+}
+
+#[test]
 fn planned_commands_are_still_usage_errors() {
     for args in [
-        &["led", "effects"][..],
         &["led", "effect", "wave"][..],
         &["led", "save"][..],
         &["led", "color", "wave", "FF0000"][..],

@@ -4,6 +4,7 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use mk61_core::Effect;
 use mk61_device::{DEFAULT_SYSFS_ROOT, Transport};
 
 /// Minimum time between two flash commits.
@@ -100,6 +101,17 @@ impl<T: Transport> Service<T> {
     }
 }
 
+/// Returns every LED effect the keyboard firmware supports.
+///
+/// The built-in effects come first (indices `0..=12`) and the custom per-key
+/// layout effect (`15`) is appended last.
+#[must_use]
+pub fn led_effects() -> Vec<Effect> {
+    let mut effects: Vec<Effect> = mk61_core::EFFECTS.to_vec();
+    effects.push(*mk61_core::custom_effect());
+    effects
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -146,6 +158,19 @@ mod tests {
         );
 
         assert_eq!(directory, PathBuf::from("/home/user/.local/state/mk61"));
+    }
+
+    #[test]
+    fn led_effects_contains_the_builtins_and_the_custom_effect() {
+        let effects = led_effects();
+
+        assert_eq!(effects.len(), 14);
+        assert_eq!(effects[0].index, 0);
+        assert_eq!(effects[0].name, "wave");
+        assert_eq!(effects[12].index, 12);
+        assert_eq!(effects[12].name, "lighting");
+        assert_eq!(effects[13].index, 15);
+        assert_eq!(effects[13].name, "custom");
     }
 
     #[test]
