@@ -43,6 +43,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn Error>> {
 
     match command {
         Command::Help => output::print_overview(&mut io::stdout().lock())?,
+        Command::Keys => output::print_keys(&mut io::stdout().lock())?,
         Command::List => {
             let catalog = DeviceCatalog::new(&sysfs_root);
             let devices = match &config.device_path {

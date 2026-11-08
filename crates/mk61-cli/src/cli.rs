@@ -90,6 +90,19 @@ pub enum Command {
     #[command(subcommand)]
     Led(LedCommand),
 
+    /// List key names and matrix positions.
+    ///
+    /// Prints every matrix position of the MK61 / SK61L with its row, column
+    /// and key name. Positions without a key are gaps left by wide keys.
+    ///
+    /// # Examples
+    ///
+    /// ```text
+    /// mk61 keys
+    /// ```
+    #[command(verbatim_doc_comment)]
+    Keys,
+
     /// Show device and capability status.
     ///
     /// Reports whether a daemon is supervising the keyboard, which keyboards

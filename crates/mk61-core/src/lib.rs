@@ -15,6 +15,7 @@
 mod color;
 mod effect;
 mod error;
+mod keys;
 mod profile;
 mod protocol;
 
@@ -24,6 +25,7 @@ pub use effect::{
     custom_effect, effect_by_index, effect_by_name, effect_color_slots, resolve_effect,
 };
 pub use error::{Error, Result};
+pub use keys::{KEY_NAMES, KEY_POSITIONS, KEY_ROWS, key_column, key_name, key_position, key_row};
 pub use profile::Profile;
 pub use protocol::*;
 

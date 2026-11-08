@@ -122,6 +122,27 @@ pub fn print_devices(writer: &mut impl Write, devices: &[DeviceInfo]) -> io::Res
     writer.flush()
 }
 
+/// Writes the key matrix to `writer`.
+///
+/// # Errors
+///
+/// Returns any I/O error produced while writing or flushing the stream.
+pub fn print_keys(writer: &mut impl Write) -> io::Result<()> {
+    writeln!(writer, "pos  row col  name")?;
+    for position in 0..mk61_core::KEY_POSITIONS {
+        let name = mk61_core::key_name(position).unwrap_or("(gap)");
+        writeln!(
+            writer,
+            "{:>3}  {:>3} {:>3}  {}",
+            position,
+            mk61_core::key_row(position),
+            mk61_core::key_column(position),
+            name
+        )?;
+    }
+    writer.flush()
+}
+
 /// Writes the LED effect catalogue to `writer`.
 ///
 /// The built-in effects come first and the custom per-key effect last. Effects
