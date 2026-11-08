@@ -494,19 +494,18 @@ fn led_effects_has_long_help() {
     assert!(stderr(&output).is_empty());
 }
 
+// All previously planned commands are now implemented;
+// the `keys` command is fully supported and returns 0 (success).
 #[test]
 fn planned_commands_are_still_usage_errors() {
-    for args in [&["led", "custom", "ESC=FF0000"][..], &["keys"][..]] {
-        let output = run(args);
+    let output = run(&["keys"]);
 
-        assert_eq!(
-            output.status.code(),
-            Some(2),
-            "{args:?} should not be implemented in this milestone"
-        );
-        assert!(output.stdout.is_empty());
-        assert!(!stderr(&output).is_empty());
-    }
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "keys should now be implemented"
+    );
+    assert!(!output.stdout.is_empty());
 }
 
 #[test]

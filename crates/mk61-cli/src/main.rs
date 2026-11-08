@@ -212,6 +212,71 @@ fn run(cli: Cli) -> Result<(), Box<dyn Error>> {
                     }
                 )?;
             }
+            LedCommand::Custom {
+                base,
+                clear,
+                assignments,
+            } => {
+                let clear_mode = clear || (assignments.len() == 1 && assignments[0] == "clear");
+                let base_color = base
+                    .as_ref()
+                    .map(|v| mk61_core::Rgb::parse(v))
+                    .transpose()
+                    .map_err(Box::<dyn Error>::from)?;
+                let mut parsed: Vec<(usize, mk61_core::Rgb)> = Vec::new();
+                if !clear_mode {
+                    for assignment in assignments {
+                        if assignment == "clear" {
+                            continue;
+                        }
+                        let (key, color_str) =
+                            assignment
+                                .split_once('=')
+                                .ok_or_else(|| -> Box<dyn Error> {
+                                    format!(
+                                        "invalid assignment '{assignment}', expected KEY=RRGGBB"
+                                    )
+                                    .into()
+                                })?;
+                        let color =
+                            mk61_core::Rgb::parse(color_str).map_err(Box::<dyn Error>::from)?;
+                        let positions = resolve_key_positions(key);
+                        if positions.is_empty() {
+                            return Err(format!("unknown key or group '{key}'").into());
+                        }
+                        for pos in positions {
+                            parsed.push((pos, color));
+                        }
+                    }
+                }
+                let device_path = resolve_device_path(&config)?;
+                let transport =
+                    HidrawTransport::open(&device_path).map_err(Box::<dyn Error>::from)?;
+                let mut service = mk61_service::Service::new(config.clone(), transport);
+                let backup = mk61_service::BackupStore::from_config(&config);
+                let mut guard = mk61_service::FlashGuard::from_config(&config);
+                let result = service.apply_led_custom(
+                    &mk61_service::SystemClock,
+                    &backup,
+                    &mut guard,
+                    base_color,
+                    &parsed,
+                    clear_mode,
+                )?;
+                if result.cleared {
+                    writeln!(
+                        io::stdout().lock(),
+                        "cleared custom layout on profile {}",
+                        result.profile
+                    )?;
+                } else {
+                    writeln!(
+                        io::stdout().lock(),
+                        "applied custom layout on profile {}",
+                        result.profile
+                    )?;
+                }
+            }
         },
     }
 
@@ -231,4 +296,55 @@ fn resolve_device_path(config: &mk61_service::ServiceConfig) -> Result<PathBuf, 
             mk61_service::DeviceError::NotFound,
         ))),
     }
+}
+
+fn resolve_key_positions(name: &str) -> Vec<usize> {
+    let lower = name.to_ascii_lowercase();
+    // Groups.
+    match lower.as_str() {
+        "wasd" => {
+            return vec![
+                mk61_core::key_position("w").unwrap(),
+                mk61_core::key_position("a").unwrap(),
+                mk61_core::key_position("s").unwrap(),
+                mk61_core::key_position("d").unwrap(),
+            ];
+        }
+        "numbers" => {
+            return (0..mk61_core::KEY_POSITIONS)
+                .filter(|&p| {
+                    mk61_core::key_name(p)
+                        .map(|n| n.chars().all(|c| c.is_ascii_digit()))
+                        .unwrap_or(false)
+                })
+                .collect();
+        }
+        "mods" => {
+            return [
+                "lshift", "rshift", "lctrl", "rctrl", "lalt", "ralt", "lwin", "fn", "menu",
+            ]
+            .iter()
+            .filter_map(|n| mk61_core::key_position(n))
+            .collect();
+        }
+        "letters" => {
+            return (0..mk61_core::KEY_POSITIONS)
+                .filter(|&p| {
+                    mk61_core::key_name(p)
+                        .map(|n| n.len() == 1 && n.chars().next().unwrap().is_ascii_lowercase())
+                        .unwrap_or(false)
+                })
+                .collect();
+        }
+        "all" => {
+            return (0..mk61_core::KEY_POSITIONS)
+                .filter(|&p| mk61_core::key_name(p).is_some())
+                .collect();
+        }
+        _ => {}
+    }
+    if let Some(pos) = mk61_core::key_position(name) {
+        return vec![pos];
+    }
+    Vec::new()
 }

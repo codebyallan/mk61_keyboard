@@ -193,6 +193,27 @@ pub enum LedCommand {
         save: bool,
     },
 
+    /// Define or clear a per-key custom layout (writes flash).
+    ///
+    /// # Examples
+    ///
+    /// ```text
+    /// mk61 led custom clear
+    /// mk61 led custom --base 000000 esc=FF0000 wasd=00FF00
+    /// ```
+    #[command(verbatim_doc_comment)]
+    Custom {
+        /// Base colour for keys not explicitly listed.
+        #[arg(long, value_name = "RRGGBB")]
+        base: Option<String>,
+        /// Remove the stored custom layout.
+        #[arg(long)]
+        clear: bool,
+        /// Key=colour assignments, e.g. `esc=FF0000` or `wasd=00FF00`.
+        #[arg(value_name = "KEY=RRGGBB")]
+        assignments: Vec<String>,
+    },
+
     /// Set palette colours for a built-in effect.
     ///
     /// Applies the colours to the active profile in RAM. Pass `--save` to commit

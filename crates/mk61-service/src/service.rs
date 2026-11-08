@@ -6,9 +6,9 @@ use std::time::Duration;
 
 use crate::ServiceError;
 use mk61_core::{
-    BLOCK_CUSTOM_COUNT, BLOCK_CUSTOM_CURRENT, BLOCK_MODE, CMD_READ_ACTIVE_PROFILE,
-    CMD_READ_PROFILE_BLOCK, CMD_WRITE_PROFILE_BLOCK, Effect, Profile, Report, Rgb, apply_effect,
-    effect_color_slots, write_color,
+    BLOCK_CUSTOM_COUNT, BLOCK_CUSTOM_CURRENT, BLOCK_MODE, BLOCK_SPECTRUM_END, BLOCK_SPECTRUM_START,
+    CMD_READ_ACTIVE_PROFILE, CMD_READ_PROFILE_BLOCK, CMD_WRITE_PROFILE_BLOCK, Effect, Profile,
+    Report, Rgb, apply_effect, effect_color_slots, write_color,
 };
 use mk61_device::{DEFAULT_SYSFS_ROOT, Transport};
 
@@ -181,24 +181,24 @@ impl<T: Transport> Service<T> {
         report[1] = CMD_WRITE_PROFILE_BLOCK;
         report[2] = profile.get();
         self.transport.write_feature(&report)?;
-        clock.sleep(std::time::Duration::from_millis(200));
+        clock.sleep(std::time::Duration::from_millis(300));
 
         // Read back and compare.
         let read_back = self.read_profile_block(clock, profile)?;
         // Compare from byte 3 onward, ignoring report id / opcode / profile
         // (the device echoes the read opcode 0x82, not our write opcode 0x02).
         if read_back[3..] != block[3..] {
-            // The firmware may be slow: wait and read once more.
-            clock.sleep(std::time::Duration::from_millis(400));
+            clock.sleep(std::time::Duration::from_millis(500));
             let read_back2 = self.read_profile_block(clock, profile)?;
             if read_back2[3..] != block[3..] {
                 let mut diff = None;
-                for (i, (a, b)) in read_back2.iter().zip(block.iter()).enumerate() {
+                for (i, (a, b)) in read_back2.iter().zip(block.iter()).enumerate().skip(3) {
                     if a != b {
                         diff = Some((i, *a, *b));
                         break;
                     }
                 }
+                let _ = diff;
                 let _ = diff;
                 return Err(ServiceError::Device(
                     mk61_device::DeviceError::MalformedReport("profile block read-back mismatch"),
@@ -417,6 +417,86 @@ impl<T: Transport> Service<T> {
         Ok(SaveProfileResult { profile })
     }
 
+    /// Applies a custom per-key layout (or clears it).
+    pub fn apply_led_custom(
+        &mut self,
+        clock: &dyn crate::Clock,
+        backup: &crate::BackupStore,
+        _guard: &mut crate::FlashGuard,
+        base: Option<mk61_core::Rgb>,
+        assignments: &[(usize, mk61_core::Rgb)],
+        clear: bool,
+    ) -> Result<ApplyLedCustomResult, ServiceError> {
+        let profile = self.read_active_profile(clock)?;
+        let original_block = self.read_profile_block(clock, profile)?;
+
+        if clear {
+            // Clear: mode 15 -> 0 (if custom), count -> 255, commit.
+            let mut block = original_block;
+            if block[BLOCK_MODE] == mk61_core::CUSTOM_EFFECT_ID {
+                block[BLOCK_MODE] = 0;
+            }
+            block[BLOCK_CUSTOM_COUNT] = 255;
+            self.write_profile_block_ram(clock, profile, &block)?;
+            backup.save("custom-clear", &original_block)?;
+            return Ok(ApplyLedCustomResult {
+                profile,
+                cleared: true,
+            });
+        }
+
+        // Build the per-key colour table (70 keys).
+        let mut rgb = [[0_u8; 3]; mk61_core::CUSTOM_KEYS];
+        if let Some(base_color) = base {
+            for rgb_entry in rgb.iter_mut().take(mk61_core::CUSTOM_KEYS) {
+                *rgb_entry = base_color.bytes();
+            }
+        }
+        for (pos, color) in assignments {
+            if *pos < mk61_core::CUSTOM_KEYS {
+                rgb[*pos] = color.bytes();
+            }
+        }
+
+        // Send the three slot reports (colour, frame, effect).
+        let slots = mk61_core::build_custom_slot_reports(profile.get(), &rgb);
+        for (i, slot_report) in slots.iter().enumerate() {
+            self.transport.write_feature(slot_report)?;
+            let delay = if i == 2 { 600 } else { 300 };
+            clock.sleep(std::time::Duration::from_millis(delay));
+        }
+
+        // Activate custom mode: mode 15, count 1 (with arm transition if needed).
+        let before_count = original_block[BLOCK_CUSTOM_COUNT];
+        if before_count == 1 {
+            // Arm first (count 255) to create a transition.
+            let mut arm = original_block;
+            arm[BLOCK_CUSTOM_COUNT] = 255;
+            arm[BLOCK_MODE] = mk61_core::CUSTOM_EFFECT_ID;
+            arm[BLOCK_CUSTOM_CURRENT] = 0;
+            self.write_profile_block_ram(clock, profile, &arm)?;
+        }
+        let mut rep = original_block;
+        // Convert read block (0x82) to write (0x02).
+        rep[1] = CMD_WRITE_PROFILE_BLOCK;
+        rep[2] = profile.get();
+        rep[BLOCK_MODE] = mk61_core::CUSTOM_EFFECT_ID;
+        rep[BLOCK_CUSTOM_COUNT] = 1;
+        rep[BLOCK_CUSTOM_CURRENT] = 0;
+        // Clear spectrum flags.
+        #[allow(clippy::needless_range_loop, clippy::manual_range_contains)]
+        for i in BLOCK_SPECTRUM_START..=BLOCK_SPECTRUM_END {
+            rep[i] = 0;
+        }
+        self.write_profile_block_ram(clock, profile, &rep)?;
+
+        backup.save("custom", &original_block)?;
+        Ok(ApplyLedCustomResult {
+            profile,
+            cleared: false,
+        })
+    }
+
     /// Clears a custom per-key layout: mode 15 -> 0, count -> 255.
     pub fn clear_custom_effect(
         &mut self,
@@ -507,6 +587,15 @@ pub struct ApplyLedFieldResult {
 pub struct SaveProfileResult {
     /// Profile that was committed.
     pub profile: Profile,
+}
+
+/// Result of applying a custom per-key layout.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApplyLedCustomResult {
+    /// Profile the layout was applied to.
+    pub profile: Profile,
+    /// Whether the custom layout was cleared.
+    pub cleared: bool,
 }
 
 /// Returns every LED effect the keyboard firmware supports.

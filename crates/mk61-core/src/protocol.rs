@@ -20,6 +20,13 @@ pub const PAYLOAD_SIZE: usize = 256;
 /// Report ID of the vendor configuration feature report.
 pub const REPORT_ID: u8 = 0x07;
 
+/// Number of keys in a custom layout.
+pub const CUSTOM_KEYS: usize = 70;
+/// Number of custom slots supported by the firmware.
+pub const CUSTOM_SLOTS: usize = 5;
+/// Effect value stored in the custom effect plane.
+pub const CUSTOM_EFFECT_STATIC: u8 = 2;
+
 // Command bytes (report byte 1).
 /// Read the active profile number.
 pub const CMD_READ_ACTIVE_PROFILE: u8 = 0x81;
@@ -184,6 +191,39 @@ pub fn read_color(
         block[base + plane + index],
         block[base + 2 * plane + index],
     ))
+}
+
+/// Builds the three slot reports (colour, frame, effect) for a custom layout.
+///
+/// Returns reports for opcodes 0x08, 0x09 and 0x0A respectively, for slot 0.
+#[must_use]
+pub fn build_custom_slot_reports(
+    profile: u8,
+    rgb: &[[u8; 3]; CUSTOM_KEYS],
+) -> [[u8; REPORT_SIZE]; 3] {
+    const OP_CODES: [u8; 3] = [0x08, 0x09, 0x0A];
+    let mut bufs = [[0_u8; 256]; 3];
+    for k in 0..CUSTOM_KEYS {
+        bufs[0][k] = rgb[k][0];
+        bufs[0][CUSTOM_KEYS + k] = rgb[k][1];
+        bufs[0][2 * CUSTOM_KEYS + k] = rgb[k][2];
+        bufs[1][1 + k / 8] |= 1u8 << (k % 8);
+        bufs[2][k] = CUSTOM_EFFECT_STATIC;
+    }
+    bufs[1][0] = 1; // one frame
+
+    let mut out = [[0_u8; REPORT_SIZE]; 3];
+    for i in 0..3 {
+        let mut report = [0_u8; REPORT_SIZE];
+        report[0] = REPORT_ID;
+        report[1] = OP_CODES[i];
+        report[2] = profile;
+        report[3] = 0; // slot 0
+        // params bytes 4..7 = 0
+        report[8..8 + 256].copy_from_slice(&bufs[i]);
+        out[i] = report;
+    }
+    out
 }
 
 #[cfg(test)]
