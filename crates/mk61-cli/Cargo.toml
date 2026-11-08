@@ -1,0 +1,20 @@
+[package]
+name = "mk61-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Command-line interface for the MK61 keyboard controller"
+
+[[bin]]
+name = "mk61"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+
+mk61-core.workspace = true
+mk61-service.workspace = true
+
+[lints]
+workspace = true

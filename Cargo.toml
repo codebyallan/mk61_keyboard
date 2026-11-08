@@ -1,0 +1,24 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "GPL-2.0-only"
+description = "Pure-Rust Linux controller for the Gamakay MK61 / SK61L keyboard"
+
+[workspace.dependencies]
+clap = { version = "4.5", features = ["derive"] }
+thiserror = "2"
+
+mk61-core = { path = "crates/mk61-core" }
+mk61-device = { path = "crates/mk61-device" }
+mk61-service = { path = "crates/mk61-service" }
+
+[workspace.lints.rust]
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }

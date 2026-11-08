@@ -1,0 +1,13 @@
+[package]
+name = "mk61-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Pure domain model and protocol logic for the MK61 keyboard"
+
+[dependencies]
+thiserror.workspace = true
+
+[lints]
+workspace = true
